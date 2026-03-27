@@ -357,12 +357,6 @@ int main(int argc, char** argv)
     brute_force->add_option("-l, --length", length, "Select a 1D FFT problem size")->default_val(8);
     brute_force->add_option("-N, --ntrial", ntrial, "Trial size for tuning the problem")
         ->default_val(10);
-    brute_force->add_option("-b, --batchSize", nbatch, "Batch size of FFT")
-        ->default_val(batch_size(length));
-    brute_force
-        ->add_option(
-            "--precision", precision, "Transform precision: single (default), double, half")
-        ->transform(CLI::CheckedTransformer(precision_map, CLI::ignore_case));
 
     auto manual_tuning = app.add_subcommand("manual", "manual tuning kernel config");
 
@@ -417,7 +411,7 @@ int main(int argc, char** argv)
     {
         // init device data
         device_data_t data;
-        data.batch = nbatch;
+        data.batch = batch_size(length);
         // construct random input on host side, allocate input/output
         // buffers on GPU.  input will be copied to GPU at launch time
         data.host_input_buf = create_input_buf(length, data.batch);
@@ -485,17 +479,17 @@ int main(int argc, char** argv)
                                 auto kernel_name = test_kernel_name(
                                     length, factorization, wgs, tpt, half_lds, direct_to_from_reg);
                                 unsigned int transforms_per_block = 0;
-                                auto         kernel_src = test_kernel_src(kernel_name,
-                                                                          device_prop,
-                                                                          transforms_per_block,
-                                                                          length,
-                                                                          compute_scheme,
-                                                                          precision,
-                                                                          factorization,
-                                                                          wgs,
-                                                                          tpt,
-                                                                          half_lds,
-                                                                          direct_to_from_reg);
+                                auto         kernel_src           = test_kernel_src(kernel_name,
+                                                                  device_prop,
+                                                                  transforms_per_block,
+                                                                  length,
+                                                                  compute_scheme,
+                                                                  precision,
+                                                                  factorization,
+                                                                  wgs,
+                                                                  tpt,
+                                                                  half_lds,
+                                                                  direct_to_from_reg);
 
                                 auto code = compile_inprocess(kernel_src, device_prop.gcnArchName);
                                 hipModule_wrapper_t module;
