@@ -338,16 +338,10 @@ gpubuf_t<size_t> create_strides(unsigned int length)
 
 int main(int argc, char** argv)
 {
-    unsigned int  length             = 0;
-    unsigned int  length_brute_force = 0;
-    unsigned int  length_manual      = 0;
-    unsigned int  ntrial             = 0;
-    unsigned int  ntrial_brute_force = 0;
-    unsigned int  ntrial_manual      = 0;
-    unsigned int  nbatch             = 0;
-    unsigned int  nbatch_brute_force = 0;
-    unsigned int  nbatch_manual      = 0;
-    ComputeScheme compute_scheme     = CS_KERNEL_STOCKHAM;
+    unsigned int  length         = 0;
+    unsigned int  ntrial         = 0;
+    unsigned int  nbatch         = 1;
+    ComputeScheme compute_scheme = CS_KERNEL_STOCKHAM;
 
     rocfft_precision                        precision = rocfft_precision_single;
     std::map<std::string, rocfft_precision> precision_map{
@@ -360,12 +354,11 @@ int main(int argc, char** argv)
     auto brute_force = app.add_subcommand(
         "brute-force", "brute force tuning kernel config with build-in combinations");
 
-    brute_force->add_option("-l, --length", length_brute_force, "Select a 1D FFT problem size")
-        ->default_val(8);
-    brute_force->add_option("-N, --ntrial", ntrial_brute_force, "Trial size for tuning the problem")
+    brute_force->add_option("-l, --length", length, "Select a 1D FFT problem size")->default_val(8);
+    brute_force->add_option("-N, --ntrial", ntrial, "Trial size for tuning the problem")
         ->default_val(10);
-    brute_force->add_option("-b, --batchSize", nbatch_brute_force, "Batch size of FFT")
-        ->default_val(batch_size(length_brute_force));
+    brute_force->add_option("-b, --batchSize", nbatch, "Batch size of FFT")
+        ->default_val(batch_size(length));
     brute_force
         ->add_option(
             "--precision", precision, "Transform precision: single (default), double, half")
@@ -383,16 +376,15 @@ int main(int argc, char** argv)
     manual_tuning
         ->add_option("--kernel-type", kernel_type, "The valid types are: sbrr/sbcc/sbrc/sbcr")
         ->default_val("sbrr");
-    manual_tuning->add_option("-l, --length", length_manual, "Select a 1D FFT problem size")
+    manual_tuning->add_option("-l, --length", length, "Select a 1D FFT problem size")
         ->default_val(8);
-    manual_tuning->add_option("-N, --ntrial", ntrial_manual, "Trial size for tuning the problem")
+    manual_tuning->add_option("-N, --ntrial", ntrial, "Trial size for tuning the problem")
         ->default_val(10);
     manual_tuning
         ->add_option(
             "--precision", precision, "Transform precision: single (default), double, half")
         ->transform(CLI::CheckedTransformer(precision_map, CLI::ignore_case));
-    manual_tuning->add_option("-b, --batchSize", nbatch_manual, "Batch size of FFT")
-        ->default_val(1);
+    manual_tuning->add_option("-b, --batchSize", nbatch, "Batch size of FFT")->default_val(1);
     manual_tuning->add_option(
         "-f, --factorization", factorization, "Factorization for a given FFT problem");
     manual_tuning->add_option("-w, --wgs", wgs, "Work group size")->default_val(64);
@@ -423,10 +415,6 @@ int main(int argc, char** argv)
 
     if(brute_force->parsed())
     {
-        nbatch = nbatch_brute_force;
-        length = length_brute_force;
-        ntrial = ntrial_brute_force;
-
         // init device data
         device_data_t data;
         data.batch = nbatch;
@@ -578,10 +566,6 @@ int main(int argc, char** argv)
     }
     else if(manual_tuning->parsed())
     {
-        nbatch = nbatch_manual;
-        length = length_manual;
-        ntrial = ntrial_manual;
-
         // init device data
         device_data_t data;
         data.batch = nbatch;
