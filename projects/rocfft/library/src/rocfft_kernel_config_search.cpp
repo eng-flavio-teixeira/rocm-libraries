@@ -357,6 +357,8 @@ int main(int argc, char** argv)
     brute_force->add_option("-l, --length", length, "Select a 1D FFT problem size")->default_val(8);
     brute_force->add_option("-N, --ntrial", ntrial, "Trial size for tuning the problem")
         ->default_val(10);
+    brute_force->add_option("-b, --batchSize", nbatch, "Batch size of FFT")
+        ->default_val(batch_size(length));        
 
     auto manual_tuning = app.add_subcommand("manual", "manual tuning kernel config");
 
@@ -411,7 +413,7 @@ int main(int argc, char** argv)
     {
         // init device data
         device_data_t data;
-        data.batch = batch_size(length);
+        data.batch = nbatch;
         // construct random input on host side, allocate input/output
         // buffers on GPU.  input will be copied to GPU at launch time
         data.host_input_buf = create_input_buf(length, data.batch);
