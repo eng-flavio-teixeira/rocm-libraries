@@ -18,6 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#define GPU_GFLOPS
+
 #include <cmath>
 #include <cstddef>
 #include <iostream>
@@ -156,7 +158,7 @@ int main(int argc, char* argv[])
     app.add_option("-N, --ntrial", ntrial, "Trial size for the problem")
         ->default_val(1)
         ->each([&](const std::string& val) {
-            std::cout << "Running profile with " << val << " samples\n";
+            // std::cout << "Running profile with " << val << " samples\n";
         });
     // Default value is set in fft_params.h based on if device-side PRNG was enabled.
     app.add_option("-g, --inputGen",
@@ -225,19 +227,19 @@ int main(int argc, char* argv[])
 
         if(*opt_not_in_place)
         {
-            std::cout << "out-of-place\n";
+            //std::cout << "out-of-place\n";
         }
         else
         {
-            std::cout << "in-place\n";
+            //std::cout << "in-place\n";
         }
 
         if(*opt_length)
         {
-            std::cout << "length:";
-            for(auto& i : params.length)
-                std::cout << " " << i;
-            std::cout << "\n";
+            // std::cout << "length:";
+            // for(auto& i : params.length)
+            //     std::cout << " " << i;
+            // std::cout << "\n";
         }
 
         if(*opt_istride)
@@ -301,7 +303,7 @@ int main(int argc, char* argv[])
         throw std::runtime_error("Invalid parameters, add --verbose=1 for detail");
     }
 
-    std::cout << "Token: " << params.token() << std::endl;
+    // std::cout << "Token: " << params.token() << std::endl;
     if(verbose)
     {
         std::cout << params.str(" ") << std::endl;
@@ -424,14 +426,19 @@ int main(int argc, char* argv[])
         }
     }
 
-    std::cout << "\nExecution gpu time:";
+    // std::cout << "\nExecution gpu time:";
+
+#ifdef GPU_TIME_IN_MS
     for(const auto& i : gpu_time)
     {
         std::cout << " " << i;
     }
-    std::cout << " ms" << std::endl;
+    std::cout << ";" << std::endl;
+#endif
+    // std::cout << " ms" << std::endl;
 
-    std::cout << "Execution gflops:  ";
+    // std::cout << "Execution gflops:  ";
+#ifdef GPU_GFLOPS
     const double totsize = product(params.length.begin(), params.length.end());
     const double k
         = ((params.itype == fft_array_type_real) || (params.otype == fft_array_type_real)) ? 2.5
@@ -441,7 +448,8 @@ int main(int argc, char* argv[])
     {
         std::cout << " " << opscount / (1e6 * i);
     }
-    std::cout << std::endl;
+    std::cout << ";" << std::endl;
+#endif
 
     rocfft_cleanup();
 }
