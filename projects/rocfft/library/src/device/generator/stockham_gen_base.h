@@ -22,6 +22,8 @@
 #include "stockham_gen.h"
 #include <cmath>
 
+static const double TWO_PI = -6.283185307179586476925286766559;
+
 // Base class for stockham kernels.  Subclasses are responsible for
 // different tiling types.
 //
@@ -111,6 +113,9 @@ struct StockhamKernel : public StockhamGeneratorSpecs
     //
     // global input/output buffer
     Variable buf{"buf", "scalar_type", true, true};
+
+    // twiddle angle
+    Variable theta{"theta", "real_type_t<scalar_type>"};
 
     // global twiddle table (stacked)
     Variable twiddles{"twiddles", "const scalar_type", true, true};
@@ -274,6 +279,8 @@ struct StockhamKernel : public StockhamGeneratorSpecs
     {
         ArgumentList args{
             R, lds_real, lds_complex, twiddles, stride_lds, offset_lds, thread, write};
+        if(online_twiddle)
+            args.append(global_transf_id);
         return args;
     }
 
@@ -424,13 +431,14 @@ struct StockhamKernel : public StockhamGeneratorSpecs
     // anything.  It still counts towards cumulative height, but we
     // subtract it from the twiddle table offset when computing an
     // index.
-    StatementList apply_twiddle_generator(unsigned int h,
-                                          unsigned int hr,
-                                          unsigned int width,
-                                          unsigned int dt,
-                                          Expression   guard,
-                                          unsigned int cumheight,
-                                          unsigned int firstFactor)
+    StatementList apply_twiddle_generator(unsigned int              h,
+                                          unsigned int              hr,
+                                          unsigned int              width,
+                                          unsigned int              dt,
+                                          Expression                guard,
+                                          unsigned int              cumheight,
+                                          unsigned int              npass,
+                                          std::vector<unsigned int> factors)
     {
         if(hr == 0)
             hr = h;
@@ -439,11 +447,41 @@ struct StockhamKernel : public StockhamGeneratorSpecs
         for(unsigned int w = 1; w < width; ++w)
         {
             auto tid  = thread + dt + h * threads_per_transform;
-            auto tidx = cumheight - firstFactor + w - 1 + (width - 1) * (tid % cumheight);
+            auto tidx = cumheight - factors[0] + w - 1 + (width - 1) * (tid % cumheight);
             auto ridx = hr * width + w;
 
-            // TODO- Can try IntrinsicLoadToDest, but should not be a bottleneck
-            work += Assign(W, twiddles[tidx]);
+            if(online_twiddle)
+            {
+                work += Assign{theta, (-TWO_PI * (global_transf_id + thread * w)) / length};
+                work += Assign(W.x(), CallExpr{"cos", {theta}});
+                work += Assign(W.y(), -CallExpr{"sin", {theta}});
+
+                // work += Printf{"cumheight: %u, threads_per_transform: %u, thread: %lu, dt: %u, w: "
+                //                "%u, hr: %u, h: "
+                //                "%u, npass: %u, idx: %lu, "
+                //                "theta: %f, W: (%f, %f) "
+                //                "vs. W_ref: (%f, %f) \n",
+                //                {cumheight,
+                //                 threads_per_transform,
+                //                 thread,
+                //                 dt,
+                //                 w,
+                //                 hr,
+                //                 h,
+                //                 npass,
+                //                 tidx,
+                //                 theta,
+                //                 W.x(),
+                //                 W.y(),
+                //                 twiddles[tidx].x(),
+                //                 twiddles[tidx].y()}};
+            }
+            else
+            {
+                // TODO- Can try IntrinsicLoadToDest, but should not be a bottleneck
+                work += Assign(W, twiddles[tidx]);
+            }
+
             work += Assign(t, TwiddleMultiply(R[ridx], W));
             work += Assign(R[ridx], t);
         }
@@ -652,6 +690,7 @@ struct StockhamKernel : public StockhamGeneratorSpecs
         StatementList& body = f.body;
         body += Declaration{W};
         body += Declaration{t};
+        body += Declaration{theta};
         body += Declaration{
             lstride, Ternary{Parens{stride_type == "SB_UNIT"}, Parens{1}, Parens{stride_lds}}};
         body += Declaration{l_offset};
@@ -694,7 +733,7 @@ struct StockhamKernel : public StockhamGeneratorSpecs
 
                 auto apply_twiddle = std::mem_fn(&StockhamKernel::apply_twiddle_generator);
                 body += add_work(
-                    std::bind(apply_twiddle, this, _1, _2, _3, _4, _5, cumheight, factors.front()),
+                    std::bind(apply_twiddle, this, _1, _2, _3, _4, _5, cumheight, npass, factors),
                     width,
                     height,
                     ThreadGuardMode::NO_GUARD);
@@ -940,15 +979,29 @@ struct StockhamKernel : public StockhamGeneratorSpecs
 
     virtual std::vector<Expression> device_call_arguments(unsigned int call_iter)
     {
-        return {R,
-                lds_real,
-                lds_complex,
-                twiddles,
-                stride_lds,
-                call_iter ? Expression{offset_lds + call_iter * stride_lds * transforms_per_block}
-                          : Expression{offset_lds},
-                thread_in_device,
-                Literal{"true"}};
+        if(online_twiddle)
+            return {R,
+                    lds_real,
+                    lds_complex,
+                    twiddles,
+                    stride_lds,
+                    call_iter
+                        ? Expression{offset_lds + call_iter * stride_lds * transforms_per_block}
+                        : Expression{offset_lds},
+                    thread_in_device,
+                    Literal{"true"},
+                    global_transf_id};
+        else
+            return {R,
+                    lds_real,
+                    lds_complex,
+                    twiddles,
+                    stride_lds,
+                    call_iter
+                        ? Expression{offset_lds + call_iter * stride_lds * transforms_per_block}
+                        : Expression{offset_lds},
+                    thread_in_device,
+                    Literal{"true"}};
     }
 
     StatementList

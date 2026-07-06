@@ -188,6 +188,10 @@ public:
         : value(std::to_string(num))
     {
     }
+    Literal(double num)
+        : value(std::to_string(num))
+    {
+    }
     Literal(const std::string& val)
         : value(val)
     {

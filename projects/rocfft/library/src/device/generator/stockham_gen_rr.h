@@ -27,11 +27,13 @@ struct StockhamKernelRR : public StockhamKernel
     explicit StockhamKernelRR(const StockhamGeneratorSpecs& specs)
         : StockhamKernel(specs)
     {
+        online_twiddle = true;
     }
 
     // TODO- check if using uint in device is also better
     Variable thread{"thread", "unsigned int"}; // use type uint in global
     Variable inbound{"inbound", "bool"};
+    Variable test_global_trans_id{"test_global_trans_id", "unsigned int"};
 
     std::string tiling_name() override
     {
@@ -59,6 +61,12 @@ struct StockhamKernelRR : public StockhamKernel
                      {Assign{index_along_d, remaining % lengths[d]},
                       Assign{remaining, remaining / lengths[d]},
                       Assign{offset, offset + index_along_d * stride[d]}}};
+
+        if(online_twiddle)
+        {
+            stmts += Declaration{global_transf_id};
+            stmts += Assign{global_transf_id, offset};
+        }
 
         stmts += Assign{batch, remaining};
         stmts += Assign{offset, offset + batch * stride[dim]};

@@ -59,6 +59,8 @@ struct StockhamGeneratorSpecs
     unsigned int              length_pp;
     unsigned int              length2d = 0;
 
+    bool online_twiddle = false;
+
     unsigned int workgroup_size;
     unsigned int threads_per_transform    = 0;
     unsigned int threads_per_transform_pp = 0;
