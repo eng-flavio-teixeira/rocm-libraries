@@ -452,29 +452,14 @@ struct StockhamKernel : public StockhamGeneratorSpecs
 
             if(online_twiddle)
             {
-                work += Assign{theta, (-TWO_PI * (global_transf_id + thread * w)) / length};
+                work
+                    += Assign{theta,
+                              (-TWO_PI
+                               * ((thread % cumheight) * w * (length / (cumheight * factors[npass]))
+                                  + hr * threads_per_transform))
+                                  / length};
                 work += Assign(W.x(), CallExpr{"cos", {theta}});
                 work += Assign(W.y(), -CallExpr{"sin", {theta}});
-
-                // work += Printf{"cumheight: %u, threads_per_transform: %u, thread: %lu, dt: %u, w: "
-                //                "%u, hr: %u, h: "
-                //                "%u, npass: %u, idx: %lu, "
-                //                "theta: %f, W: (%f, %f) "
-                //                "vs. W_ref: (%f, %f) \n",
-                //                {cumheight,
-                //                 threads_per_transform,
-                //                 thread,
-                //                 dt,
-                //                 w,
-                //                 hr,
-                //                 h,
-                //                 npass,
-                //                 tidx,
-                //                 theta,
-                //                 W.x(),
-                //                 W.y(),
-                //                 twiddles[tidx].x(),
-                //                 twiddles[tidx].y()}};
             }
             else
             {
