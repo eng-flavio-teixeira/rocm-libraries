@@ -279,8 +279,6 @@ struct StockhamKernel : public StockhamGeneratorSpecs
     {
         ArgumentList args{
             R, lds_real, lds_complex, twiddles, stride_lds, offset_lds, thread, write};
-        if(online_twiddle)
-            args.append(global_transf_id);
         return args;
     }
 
@@ -964,29 +962,15 @@ struct StockhamKernel : public StockhamGeneratorSpecs
 
     virtual std::vector<Expression> device_call_arguments(unsigned int call_iter)
     {
-        if(online_twiddle)
-            return {R,
-                    lds_real,
-                    lds_complex,
-                    twiddles,
-                    stride_lds,
-                    call_iter
-                        ? Expression{offset_lds + call_iter * stride_lds * transforms_per_block}
-                        : Expression{offset_lds},
-                    thread_in_device,
-                    Literal{"true"},
-                    global_transf_id};
-        else
-            return {R,
-                    lds_real,
-                    lds_complex,
-                    twiddles,
-                    stride_lds,
-                    call_iter
-                        ? Expression{offset_lds + call_iter * stride_lds * transforms_per_block}
-                        : Expression{offset_lds},
-                    thread_in_device,
-                    Literal{"true"}};
+        return {R,
+                lds_real,
+                lds_complex,
+                twiddles,
+                stride_lds,
+                call_iter ? Expression{offset_lds + call_iter * stride_lds * transforms_per_block}
+                          : Expression{offset_lds},
+                thread_in_device,
+                Literal{"true"}};
     }
 
     StatementList

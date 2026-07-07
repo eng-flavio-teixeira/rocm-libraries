@@ -33,7 +33,6 @@ struct StockhamKernelRR : public StockhamKernel
     // TODO- check if using uint in device is also better
     Variable thread{"thread", "unsigned int"}; // use type uint in global
     Variable inbound{"inbound", "bool"};
-    Variable test_global_trans_id{"test_global_trans_id", "unsigned int"};
 
     std::string tiling_name() override
     {
