@@ -155,6 +155,9 @@ using complex_type_t = typename complex_type<T>::type;
 // complex_type_t<double> double_complex_val;
 
 template <typename T>
+static constexpr T TWO_PI_TYPE_T = static_cast<T>(-6.283185307179586476925286766559);
+
+template <typename T>
 __device__ T TWLstep1(const T* twiddles, size_t u)
 {
     size_t j      = u & 255;

@@ -22,8 +22,6 @@
 #include "stockham_gen.h"
 #include <cmath>
 
-static const double TWO_PI = -6.283185307179586476925286766559;
-
 // Base class for stockham kernels.  Subclasses are responsible for
 // different tiling types.
 //
@@ -116,6 +114,7 @@ struct StockhamKernel : public StockhamGeneratorSpecs
 
     // twiddle angle
     Variable theta{"theta", "real_type_t<scalar_type>"};
+    Variable two_pi{"two_pi", "constexpr real_type_t<scalar_type>"};
 
     // global twiddle table (stacked)
     Variable twiddles{"twiddles", "const scalar_type", true, true};
@@ -450,12 +449,9 @@ struct StockhamKernel : public StockhamGeneratorSpecs
 
             if(online_twiddle)
             {
-                work
-                    += Assign{theta,
-                              (-TWO_PI
-                               * ((thread % cumheight) * w * (length / (cumheight * factors[npass]))
-                                  + hr * threads_per_transform))
-                                  / length};
+                auto val_1 = w * (length / (cumheight * factors[npass]));
+                auto val_2 = (w * h * threads_per_transform) % (cumheight * factors[npass]);
+                work += Assign{theta, (-two_pi * ((thread % cumheight) * val_1 + val_2)) / length};
                 work += Assign(W.x(), CallExpr{"cos", {theta}});
                 work += Assign(W.y(), -CallExpr{"sin", {theta}});
             }
@@ -674,6 +670,7 @@ struct StockhamKernel : public StockhamGeneratorSpecs
         body += Declaration{W};
         body += Declaration{t};
         body += Declaration{theta};
+        body += Declaration{two_pi, "TWO_PI_TYPE_T<real_type_t<scalar_type>>"};
         body += Declaration{
             lstride, Ternary{Parens{stride_type == "SB_UNIT"}, Parens{1}, Parens{stride_lds}}};
         body += Declaration{l_offset};
