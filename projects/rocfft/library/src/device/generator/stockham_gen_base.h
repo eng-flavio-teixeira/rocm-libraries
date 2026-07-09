@@ -74,7 +74,7 @@ struct StockhamKernel : public StockhamGeneratorSpecs
         R.size                    = Expression{nregisters};
         lds_reg_sync.decl_default = Literal{"true"};
     }
-    virtual ~StockhamKernel(){};
+    virtual ~StockhamKernel() { };
 
     unsigned int nregisters;
     unsigned int transforms_per_block;
@@ -452,8 +452,8 @@ struct StockhamKernel : public StockhamGeneratorSpecs
                 auto val_1 = w * (length / (cumheight * factors[npass]));
                 auto val_2 = (w * h * threads_per_transform) % (cumheight * factors[npass]);
                 work += Assign{theta, (-two_pi * ((thread % cumheight) * val_1 + val_2)) / length};
-                work += Assign(W.x(), CallExpr{"cos", {theta}});
-                work += Assign(W.y(), -CallExpr{"sin", {theta}});
+                work += Assign(W.x(), CallExpr{"__cosf", {theta}});
+                work += Assign(W.y(), -CallExpr{"__sinf", {theta}});
             }
             else
             {
