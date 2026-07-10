@@ -640,25 +640,25 @@ ComputeScheme
         // smaller batch size due to using more CUs.  So prefer
         // single-kernel only if we launch enough workgroups for all
         // CUs
-        if(nodeData.length[0] > 4096)
-        {
-            auto kernel = pool.get_kernel(FMKey(nodeData.length[0], nodeData.precision));
+        // if(nodeData.length[0] > 4096)
+        // {
+        //     auto kernel = pool.get_kernel(FMKey(nodeData.length[0], nodeData.precision));
 
-            // higher dimensions and batch is the effective batch for
-            // the kernel
-            const auto totalBatch
-                = product(nodeData.length.begin() + 1, nodeData.length.end()) * nodeData.batch;
+        //     // higher dimensions and batch is the effective batch for
+        //     // the kernel
+        //     const auto totalBatch
+        //         = product(nodeData.length.begin() + 1, nodeData.length.end()) * nodeData.batch;
 
-            // Bluestein would have chosen this kernel for
-            // single-kernel Bluestein, so continue using it for
-            // chirp setup
-            if((parent && parent->scheme == CS_BLUESTEIN)
-               || totalBatch / kernel.transforms_per_block
-                      >= static_cast<size_t>(pool.deviceProp->multiProcessorCount))
-                return CS_KERNEL_STOCKHAM;
-            // otherwise, fall through to multi-kernel plan
-        }
-        else
+        //     // Bluestein would have chosen this kernel for
+        //     // single-kernel Bluestein, so continue using it for
+        //     // chirp setup
+        //     if((parent && parent->scheme == CS_BLUESTEIN)
+        //        || totalBatch / kernel.transforms_per_block
+        //               >= static_cast<size_t>(pool.deviceProp->multiProcessorCount))
+        //         return CS_KERNEL_STOCKHAM;
+        //     // otherwise, fall through to multi-kernel plan
+        // }
+        // else
         {
             return CS_KERNEL_STOCKHAM;
         }
