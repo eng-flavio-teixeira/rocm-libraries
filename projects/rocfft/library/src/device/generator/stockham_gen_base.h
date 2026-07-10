@@ -61,7 +61,8 @@ struct StockhamKernel : public StockhamGeneratorSpecs
                 }
             }
 
-            transforms_per_block = lds_byte_limit / bytes_per_batch;
+            transforms_per_block
+                = lds_byte_limit >= bytes_per_batch ? lds_byte_limit / bytes_per_batch : 1;
             while(threads_per_transform * transforms_per_block > workgroup_size)
                 --transforms_per_block;
             if(!factors2d.empty())
