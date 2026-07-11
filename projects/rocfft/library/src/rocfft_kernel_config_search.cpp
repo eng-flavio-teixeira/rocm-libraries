@@ -47,7 +47,7 @@
 
 static const std::vector<unsigned int> supported_factors
     = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 16, 17};
-static const std::vector<unsigned int> supported_wgs{64, 128, 256};
+static const std::vector<unsigned int> supported_wgs{64, 128, 256, 512};
 
 // recursively find all unique factorizations of given length.  each
 // factorization is a vector of ints, sorted so they're uniquified in
