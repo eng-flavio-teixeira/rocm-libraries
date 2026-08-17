@@ -480,17 +480,17 @@ int main(int argc, char** argv)
                                 auto kernel_name = test_kernel_name(
                                     length, factorization, wgs, tpt, half_lds, direct_to_from_reg);
                                 unsigned int transforms_per_block = 0;
-                                auto         kernel_src = test_kernel_src(kernel_name,
-                                                                          device_prop,
-                                                                          transforms_per_block,
-                                                                          length,
-                                                                          compute_scheme,
-                                                                          precision,
-                                                                          factorization,
-                                                                          wgs,
-                                                                          tpt,
-                                                                          half_lds,
-                                                                          direct_to_from_reg);
+                                auto         kernel_src           = test_kernel_src(kernel_name,
+                                                                  device_prop,
+                                                                  transforms_per_block,
+                                                                  length,
+                                                                  compute_scheme,
+                                                                  precision,
+                                                                  factorization,
+                                                                  wgs,
+                                                                  tpt,
+                                                                  half_lds,
+                                                                  direct_to_from_reg);
 
                                 auto code = compile_inprocess(kernel_src, device_prop.gcnArchName);
                                 hipModule_wrapper_t module;
