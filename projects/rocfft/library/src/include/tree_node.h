@@ -1039,9 +1039,17 @@ public:
     bool         CreateDeviceResources() override;
     void         SetupGridParam(GridParam& gp) override;
     FMKey        GetKernelKey() const override;
-    IndexType    GetKernelIndexType() const;
+    // Most kernels use size_t for strides/offsets — 64-bit by default.
+    // Overridden by nodes that use narrower index types, when possible.
+    virtual IndexType GetIndexType() const
+    {
+        return IndexType::_64BIT;
+    }
     virtual void GetKernelFactors();
     virtual void GetKernelPartialPassFactors();
+
+    // Max element index the kernel would compute for a given I/O side.
+    size_t MaxKernelIndex(io_data_label io) const;
 };
 
 /*****************************************************
@@ -1063,6 +1071,7 @@ protected:
     void SetupGridParam_internal(GridParam& gp) override;
 
 public:
+    IndexType GetIndexType() const override;
     // Transpose tiles read more row-ish and write more column-ish.  So
     // assume output benefits more from padding than input.
     bool PaddingBenefitsOutput() override
