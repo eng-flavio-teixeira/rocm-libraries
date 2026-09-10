@@ -205,6 +205,8 @@ static std::string bluestein_multi_chirp_rtc(const std::string&         kernel_n
                         {Assign{val, CallExpr{"TWLstep3", {twiddles_large, (tx * tx) % (2 * N)}}}}};
     func.body += ElseIf{twl == 4,
                         {Assign{val, CallExpr{"TWLstep4", {twiddles_large, (tx * tx) % (2 * N)}}}}};
+    func.body += ElseIf{twl == 5,
+                        {Assign{val, CallExpr{"TWLstep5", {twiddles_large, (tx * tx) % (2 * N)}}}}};
 
     func.body += MultiplyAssign(val.y(), CallExpr{"real_type_t<scalar_type>", {dir}});
 

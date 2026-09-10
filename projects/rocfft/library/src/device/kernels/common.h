@@ -210,6 +210,30 @@ __device__ T TWLstep4(const T* twiddles, size_t u)
     return result;
 }
 
+template <typename T>
+__device__ T TWLstep5(const T* twiddles, size_t u)
+{
+    size_t j      = u & 255;
+    T      result = twiddles[j];
+    u >>= 8;
+    j      = u & 255;
+    result = T((result.x * twiddles[256 + j].x - result.y * twiddles[256 + j].y),
+               (result.y * twiddles[256 + j].x + result.x * twiddles[256 + j].y));
+    u >>= 8;
+    j      = u & 255;
+    result = T((result.x * twiddles[512 + j].x - result.y * twiddles[512 + j].y),
+               (result.y * twiddles[512 + j].x + result.x * twiddles[512 + j].y));
+    u >>= 8;
+    j      = u & 255;
+    result = T((result.x * twiddles[768 + j].x - result.y * twiddles[768 + j].y),
+               (result.y * twiddles[768 + j].x + result.x * twiddles[768 + j].y));
+    u >>= 8;
+    j      = u & 255;
+    result = T((result.x * twiddles[1024 + j].x - result.y * twiddles[1024 + j].y),
+               (result.y * twiddles[1024 + j].x + result.x * twiddles[1024 + j].y));
+    return result;
+}
+
 #define TWIDDLE_STEP_MUL_FWD(TWFUNC, TWIDDLES, INDEX, REG) \
     {                                                      \
         T              W = TWFUNC(TWIDDLES, INDEX);        \
