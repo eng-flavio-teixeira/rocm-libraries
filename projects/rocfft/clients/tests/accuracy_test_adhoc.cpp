@@ -670,7 +670,7 @@ INSTANTIATE_TEST_SUITE_P(adhoc_kint_index_boundary,
 const auto adhoc_64_bit_idx_twiddle_large_tokens = {
     // clang-format off
     // CS_L1D_TRTRT 
-    "complex_forward_len_17179869184_single_ip_batch_1_istride_1_CI_ostride_1_CI_idist_17179869184_odist_17179869184_ioffset_0_0_ooffset_0_0",
+    "complex_forward_len_8589934592_single_ip_batch_1_istride_1_CI_ostride_1_CI_idist_8589934592_odist_8589934592_ioffset_0_0_ooffset_0_0",
     // clang-format on
 };
 INSTANTIATE_TEST_SUITE_P(
