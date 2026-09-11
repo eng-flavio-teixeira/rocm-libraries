@@ -157,16 +157,14 @@ using complex_type_t = typename complex_type<T>::type;
 template <typename T>
 __device__ T TWLstep(const T* twiddles, size_t u, unsigned int step)
 {
-    size_t j;
-    T      result;
+    size_t j      = u & 255;
+    T      result = twiddles[j];
 
 #pragma unroll
-    for(unsigned int i = 0; i < step; i++)
+    for(unsigned int i = 0; i < step - 1; i++)
     {
-        j      = u & 255;
-        result = twiddles[j];
         u >>= 8;
-
+        j      = u & 255;
         result = T(
             (result.x * twiddles[256 * (i + 1) + j].x - result.y * twiddles[256 * (i + 1) + j].y),
             (result.y * twiddles[256 * (i + 1) + j].x + result.x * twiddles[256 * (i + 1) + j].y));
