@@ -46,3 +46,44 @@ TEST(rocfft_internal, function_pool_runtime_paths)
     EXPECT_FALSE(pool.has_function(pp_key, 1));
     EXPECT_THROW(pool.get_kernel(pp_key, CS_3D_PP, 1), std::out_of_range);
 }
+
+// Configs from a tuning file skip the generator pass that sizes the
+// workgroup to match the rest of the config, so the pool checks it.
+TEST(rocfft_internal, function_pool_rejects_inconsistent_workgroup)
+{
+    constexpr unsigned int lds_bytes = 64 * 1024;
+    function_pool          pool(lds_bytes);
+
+    KernelConfig config;
+    config.factors               = {8, 8};
+    config.threads_per_transform = {8, 0};
+    config.transforms_per_block  = 4;
+
+    auto build = [&config](int wgs, ComputeScheme scheme) {
+        config.workgroup_size = wgs;
+        FFTKernel kernel(config, scheme);
+        return kernel.workgroup_size;
+    };
+
+    // 8 threads for each of 4 transforms is 32 threads of work.
+    EXPECT_EQ(build(32, CS_KERNEL_STOCKHAM), 32);
+
+    // A wider workgroup gives the extra threads a transform index
+    // past the end of the block; a narrower one drops transforms.
+    EXPECT_THROW(build(64, CS_KERNEL_STOCKHAM), std::runtime_error);
+    EXPECT_THROW(build(16, CS_KERNEL_STOCKHAM), std::runtime_error);
+
+    // 2D_SINGLE sizes its workgroup from the second dimension.
+    EXPECT_EQ(build(64, CS_KERNEL_2D_SINGLE), 64);
+
+    // An empty config carries no sizes to disagree about.
+    EXPECT_NO_THROW(pool.add_new_kernel(
+        FMKey(99989, rocfft_precision_single, CS_KERNEL_STOCKHAM)));
+
+    // Reaching the pool through a key is the path a tuning file takes.
+    config.workgroup_size = 64;
+    EXPECT_THROW(
+        pool.add_new_kernel(
+            FMKey(99989, rocfft_precision_single, CS_KERNEL_STOCKHAM, NONE, config)),
+        std::runtime_error);
+}

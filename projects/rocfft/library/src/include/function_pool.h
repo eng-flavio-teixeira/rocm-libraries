@@ -141,7 +141,10 @@ struct FFTKernel
     {
     }
 
-    FFTKernel(const KernelConfig& config)
+    // Configs that arrive this way come from a tuning file, so they
+    // skip the generator pass that otherwise sizes workgroup_size to
+    // match the rest of the config.
+    FFTKernel(const KernelConfig& config, ComputeScheme scheme)
         : factors(config.factors)
         , transforms_per_block(config.transforms_per_block)
         , workgroup_size(config.workgroup_size)
@@ -150,6 +153,22 @@ struct FFTKernel
         , half_lds(config.half_lds)
         , direct_to_from_reg(config.direct_to_from_reg)
     {
+        // The kernel works out each thread's transform within the
+        // block as workgroup_size / threads_per_transform, while the
+        // grid is sized from transforms_per_block.  If the two
+        // disagree the launch computes the wrong thing instead of
+        // failing: threads past the end of the block alias onto an
+        // in-block LDS slot, and transforms get dropped or repeated.
+        // 2D_SINGLE is exempt, as it sizes its workgroup from the
+        // second dimension and counts whole 2D transforms per block.
+        if(scheme != CS_KERNEL_2D_SINGLE
+           && threads_per_transform[0] * static_cast<int>(transforms_per_block)
+                  != workgroup_size)
+            throw std::runtime_error(
+                "inconsistent " + PrintScheme(scheme) + " kernel config: workgroup_size "
+                + std::to_string(workgroup_size) + " != threads_per_transform "
+                + std::to_string(threads_per_transform[0]) + " * transforms_per_block "
+                + std::to_string(transforms_per_block));
     }
 
     KernelConfig get_kernel_config() const
@@ -371,7 +390,8 @@ public:
         FMKey new_key_with_lds          = new_key;
         new_key_with_lds.lds_size_bytes = max_lds_bytes;
 
-        function_map.emplace(new_key_with_lds, FFTKernel(new_key_with_lds.kernel_config));
+        function_map.emplace(new_key_with_lds,
+                             FFTKernel(new_key_with_lds.kernel_config, new_key_with_lds.scheme));
     }
 
     bool has_function(const FMKey& key) const
