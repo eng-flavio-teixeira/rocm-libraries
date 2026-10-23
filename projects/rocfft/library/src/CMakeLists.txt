@@ -517,9 +517,12 @@ target_link_libraries( rocfft_kernel_config_search PRIVATE
   generator
   rocfft-rtc-launch
   rocfft-function-pool
+  rocfft-rtc-subprocess
   )
 target_link_directories( rocfft_kernel_config_search PRIVATE ${ROCFFT_HOST_LINK_DIRS} )
 target_link_std_experimental_filesystem( rocfft_kernel_config_search )
+# the search compiles candidates by spawning the helper, so it has to exist
+add_dependencies( rocfft_kernel_config_search rocfft_rtc_helper )
 
 target_link_libraries( rocfft_aot_helper PRIVATE
   generator
