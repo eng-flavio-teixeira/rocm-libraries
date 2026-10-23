@@ -89,7 +89,11 @@ std::set<std::vector<unsigned int>> power_set(std::vector<unsigned int>::const_i
     if(std::distance(begin, end) == 1)
     {
         ret.insert({*begin});
-        ret.insert({});
+        // an explicit empty vector, not insert({}) - a braced empty
+        // list binds to the initializer_list overload and inserts
+        // nothing, which drops every subset that omits the last
+        // factor and makes the result depend on the factor order
+        ret.emplace();
     }
     else
     {
