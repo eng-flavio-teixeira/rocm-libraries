@@ -548,6 +548,7 @@ struct candidate
 // block, and they alias onto an in-block LDS slot.
 std::vector<candidate> enumerate_candidates(unsigned int                     length,
                                             const std::vector<unsigned int>& factorization,
+                                            unsigned int                     min_tpb,
                                             unsigned int                     max_tpb,
                                             unsigned int                     wgs_floor,
                                             unsigned int                     wgs_limit,
@@ -556,7 +557,7 @@ std::vector<candidate> enumerate_candidates(unsigned int                     len
     std::vector<candidate> ret;
     for(auto tpt : supported_threads_per_transform(factorization))
     {
-        for(unsigned int tpb = 1; tpb <= max_tpb; ++tpb)
+        for(unsigned int tpb = min_tpb; tpb <= max_tpb; ++tpb)
         {
             const unsigned int wgs = tpt * tpb;
             // every larger tpb only makes the workgroup bigger
@@ -704,7 +705,10 @@ int main(int argc, char** argv)
     unsigned int  length         = 0;
     unsigned int  ntrial         = 0;
     unsigned int  nbatch         = 1;
+    unsigned int  min_tpb        = 1;
     unsigned int  max_tpb        = 32;
+    unsigned int  first_ordering = 1;
+    unsigned int  last_ordering  = 0;
     unsigned int  ntop           = 20;
     unsigned int  njob           = rocfft_concurrency();
     std::string   rtc_helper_opt;
@@ -732,6 +736,26 @@ int main(int argc, char** argv)
                      "roughly linearly with this.  Lengths below 32 may need a larger value to "
                      "reach the configurations they ship with.")
         ->default_val(32);
+    brute_force
+        ->add_option("--min-tpb",
+                     min_tpb,
+                     "Smallest number of transforms per block to consider, to skip a range "
+                     "already known to be uninteresting.")
+        ->default_val(1)
+        ->check(CLI::PositiveNumber);
+    brute_force
+        ->add_option("--first-ordering",
+                     first_ordering,
+                     "1-based factor ordering to start at.  Orderings are enumerated "
+                     "deterministically for a given length, so this resumes an interrupted "
+                     "search or isolates a single ordering.")
+        ->default_val(1)
+        ->check(CLI::PositiveNumber);
+    brute_force
+        ->add_option("--last-ordering",
+                     last_ordering,
+                     "1-based factor ordering to stop after.  Zero runs to the end.")
+        ->default_val(0);
     brute_force
         ->add_option("--top",
                      ntop,
@@ -843,7 +867,7 @@ int main(int argc, char** argv)
         std::cout << "device " << device_prop.gcnArchName << ", wave " << device_prop.warpSize
                   << ", lds " << device_prop.sharedMemPerBlock / 1024 << "KiB, lds budget "
                   << lds_byte_limit / 1024 << "KiB, workgroup " << wgs_floor << "-" << wgs_limit
-                  << ", max transforms_per_block " << max_tpb << std::endl;
+                  << ", transforms_per_block " << min_tpb << "-" << max_tpb << std::endl;
 
         // A twiddle table can only describe this many passes, so
         // rocFFT could never use a longer factorization anyway.
@@ -860,13 +884,33 @@ int main(int argc, char** argv)
             } while(std::next_permutation(factorization.begin(), factorization.end()));
         }
 
+        if(min_tpb > max_tpb)
+        {
+            std::cerr << "--min-tpb (" << min_tpb << ") must not exceed --max-tpb (" << max_tpb
+                      << ")" << std::endl;
+            return 1;
+        }
+
+        // Orderings come out of factorize() and next_permutation() in a
+        // fixed order for a given length, so a 1-based index names the
+        // same ordering across runs and can be used to resume or isolate.
+        const size_t ordering_begin = std::min<size_t>(first_ordering - 1, orderings.size());
+        const size_t ordering_end   = last_ordering
+                                          ? std::min<size_t>(last_ordering, orderings.size())
+                                          : orderings.size();
+
         // Counting the whole space first costs nothing and keeps a
         // long length from being a surprise - the search is dominated
         // by one runtime compile per candidate.
         size_t ncandidate = 0;
-        for(const auto& ordering : orderings)
-            ncandidate += enumerate_candidates(
-                              length, ordering, max_tpb, wgs_floor, wgs_limit, lds_byte_limit)
+        for(size_t i = ordering_begin; i < ordering_end; ++i)
+            ncandidate += enumerate_candidates(length,
+                                               orderings[i],
+                                               min_tpb,
+                                               max_tpb,
+                                               wgs_floor,
+                                               wgs_limit,
+                                               lds_byte_limit)
                               .size();
         auto rtc_helper = rtc_helper_opt.empty() ? locate_rtc_helper(argv[0])
                                                  : std::optional<std::string>(rtc_helper_opt);
@@ -874,14 +918,15 @@ int main(int argc, char** argv)
             throw std::runtime_error("unable to find rocfft_rtc_helper next to this executable, "
                                      "pass --rtc-helper to say where it is");
 
-        std::cout << orderings.size() << " factor orderings, " << ncandidate
-                  << " candidate kernels, compiling " << njob << " at a time via "
+        std::cout << ordering_end - ordering_begin << " factor orderings (" << ordering_begin + 1
+                  << " through " << ordering_end << " of " << orderings.size() << "), "
+                  << ncandidate << " candidate kernels, compiling " << njob << " at a time via "
                   << *rtc_helper << std::endl;
 
         size_t      tested    = 0;
         size_t      rejected  = 0;
         const auto  start     = std::chrono::steady_clock::now();
-        for(size_t ordering_idx = 0; ordering_idx < orderings.size(); ++ordering_idx)
+        for(size_t ordering_idx = ordering_begin; ordering_idx < ordering_end; ++ordering_idx)
         {
             const auto& factorization = orderings[ordering_idx];
 
@@ -895,7 +940,7 @@ int main(int argc, char** argv)
             std::cout << std::endl;
 
             auto candidates = enumerate_candidates(
-                length, factorization, max_tpb, wgs_floor, wgs_limit, lds_byte_limit);
+                length, factorization, min_tpb, max_tpb, wgs_floor, wgs_limit, lds_byte_limit);
             if(candidates.empty())
                 continue;
 
