@@ -548,6 +548,7 @@ struct candidate
 // block, and they alias onto an in-block LDS slot.
 std::vector<candidate> enumerate_candidates(unsigned int                     length,
                                             const std::vector<unsigned int>& factorization,
+                                            unsigned int                     min_tpt,
                                             unsigned int                     min_tpb,
                                             unsigned int                     max_tpb,
                                             unsigned int                     wgs_floor,
@@ -557,6 +558,12 @@ std::vector<candidate> enumerate_candidates(unsigned int                     len
     std::vector<candidate> ret;
     for(auto tpt : supported_threads_per_transform(factorization))
     {
+        // Low tpt means a high element count per thread, which is both the
+        // slowest configuration and by far the most expensive to compile,
+        // since the generator fully unrolls the per-thread work.
+        if(tpt < min_tpt)
+            continue;
+
         for(unsigned int tpb = min_tpb; tpb <= max_tpb; ++tpb)
         {
             const unsigned int wgs = tpt * tpb;
@@ -705,6 +712,7 @@ int main(int argc, char** argv)
     unsigned int  length         = 0;
     unsigned int  ntrial         = 0;
     unsigned int  nbatch         = 1;
+    unsigned int  min_tpt        = 1;
     unsigned int  min_tpb        = 1;
     unsigned int  max_tpb        = 32;
     unsigned int  first_ordering = 1;
@@ -736,6 +744,14 @@ int main(int argc, char** argv)
                      "roughly linearly with this.  Lengths below 32 may need a larger value to "
                      "reach the configurations they ship with.")
         ->default_val(32);
+    brute_force
+        ->add_option("--min-tpt",
+                     min_tpt,
+                     "Smallest threads_per_transform to consider.  Compile time is dominated by "
+                     "the low-tpt candidates, which are also the slowest, so raising this cuts "
+                     "search time sharply at little risk of missing the winner.")
+        ->default_val(1)
+        ->check(CLI::PositiveNumber);
     brute_force
         ->add_option("--min-tpb",
                      min_tpb,
@@ -867,7 +883,8 @@ int main(int argc, char** argv)
         std::cout << "device " << device_prop.gcnArchName << ", wave " << device_prop.warpSize
                   << ", lds " << device_prop.sharedMemPerBlock / 1024 << "KiB, lds budget "
                   << lds_byte_limit / 1024 << "KiB, workgroup " << wgs_floor << "-" << wgs_limit
-                  << ", transforms_per_block " << min_tpb << "-" << max_tpb << std::endl;
+                  << ", threads_per_transform " << min_tpt << "+, transforms_per_block " << min_tpb
+                  << "-" << max_tpb << std::endl;
 
         // A twiddle table can only describe this many passes, so
         // rocFFT could never use a longer factorization anyway.
@@ -906,6 +923,7 @@ int main(int argc, char** argv)
         for(size_t i = ordering_begin; i < ordering_end; ++i)
             ncandidate += enumerate_candidates(length,
                                                orderings[i],
+                                               min_tpt,
                                                min_tpb,
                                                max_tpb,
                                                wgs_floor,
@@ -940,7 +958,7 @@ int main(int argc, char** argv)
             std::cout << std::endl;
 
             auto candidates = enumerate_candidates(
-                length, factorization, min_tpb, max_tpb, wgs_floor, wgs_limit, lds_byte_limit);
+                length, factorization, min_tpt, min_tpb, max_tpb, wgs_floor, wgs_limit, lds_byte_limit);
             if(candidates.empty())
                 continue;
 
