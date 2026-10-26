@@ -885,6 +885,15 @@ int main(int argc, char** argv)
         {
             const auto& factorization = orderings[ordering_idx];
 
+            // Announce the ordering before doing any work for it. A GPU
+            // reset takes down the process, so only output already flushed
+            // survives to name the ordering responsible.
+            std::cout << "ordering " << ordering_idx + 1 << " of " << orderings.size()
+                      << " entering, factors";
+            for(auto f : factorization)
+                std::cout << " " << f;
+            std::cout << std::endl;
+
             auto candidates = enumerate_candidates(
                 length, factorization, max_tpb, wgs_floor, wgs_limit, lds_byte_limit);
             if(candidates.empty())
@@ -892,6 +901,9 @@ int main(int argc, char** argv)
 
             // the twiddle layout follows the order of the radices
             data.twiddles = create_twiddles(factorization, precision, device_prop);
+
+            std::cout << "twiddles ready, compiling " << candidates.size() << " candidates"
+                      << std::endl;
 
             compile_candidates(candidates,
                                device_prop,
@@ -912,6 +924,10 @@ int main(int argc, char** argv)
                               << std::endl;
                     continue;
                 }
+
+                // Name the candidate before loading and launching it, for the
+                // same reason as the ordering above.
+                std::cout << "launch " << c.kernel_name << std::endl;
 
                 hipModule_wrapper_t module;
                 module.alloc(c.code.data());
@@ -1085,7 +1101,8 @@ int main(int argc, char** argv)
 
         // Todo: verify tpt
         // auto tpts = supported_threads_per_transform(factorization);
-        if(tpt < wgs)
+        // tpt == wgs is legitimate: it means one transform per block.
+        if(tpt <= wgs)
         {
             // Fixme:
             // half lds currently requires direct to/from reg
@@ -1127,6 +1144,12 @@ int main(int argc, char** argv)
             // grepped for and shoved into a database if desired
             std::cout << kernel_name << ", " << std::setprecision(3) << static_cast<double>(time)
                       << std::endl;
+        }
+        else
+        {
+            std::cerr << "threads_per_transform (" << tpt << ") must not exceed workgroup_size ("
+                      << wgs << ")" << std::endl;
+            return 1;
         }
     }
 
