@@ -712,6 +712,7 @@ int main(int argc, char** argv)
     unsigned int  length         = 0;
     unsigned int  ntrial         = 0;
     unsigned int  nbatch         = 1;
+    unsigned int  max_factors    = TWIDDLES_RTC_MAX_RADICES;
     unsigned int  min_tpt        = 1;
     unsigned int  min_tpb        = 1;
     unsigned int  max_tpb        = 32;
@@ -744,6 +745,15 @@ int main(int argc, char** argv)
                      "roughly linearly with this.  Lengths below 32 may need a larger value to "
                      "reach the configurations they ship with.")
         ->default_val(32);
+    brute_force
+        ->add_option("--max-factors",
+                     max_factors,
+                     "Largest number of radices in a factorization to consider.  Most of the "
+                     "space is long factorizations of small radices, which need more passes and "
+                     "lose badly, so lowering this cuts the space sharply.  Ordering indices are "
+                     "only comparable between runs that agree on this value.")
+        ->default_val(TWIDDLES_RTC_MAX_RADICES)
+        ->check(CLI::PositiveNumber);
     brute_force
         ->add_option("--min-tpt",
                      min_tpt,
@@ -890,10 +900,12 @@ int main(int argc, char** argv)
         // rocFFT could never use a longer factorization anyway.
         // Orderings of the factors are separate candidates, because
         // the twiddle layout follows the order of the radices.
+        const size_t factor_limit = std::min<size_t>(max_factors, TWIDDLES_RTC_MAX_RADICES);
+
         std::vector<std::vector<unsigned int>> orderings;
         for(auto factorization : factorizations)
         {
-            if(factorization.size() > TWIDDLES_RTC_MAX_RADICES)
+            if(factorization.size() > factor_limit)
                 continue;
             do
             {
@@ -937,9 +949,10 @@ int main(int argc, char** argv)
                                      "pass --rtc-helper to say where it is");
 
         std::cout << ordering_end - ordering_begin << " factor orderings (" << ordering_begin + 1
-                  << " through " << ordering_end << " of " << orderings.size() << "), "
-                  << ncandidate << " candidate kernels, compiling " << njob << " at a time via "
-                  << *rtc_helper << std::endl;
+                  << " through " << ordering_end << " of " << orderings.size() << ", at most "
+                  << factor_limit << " factors), " << ncandidate
+                  << " candidate kernels, compiling " << njob << " at a time via " << *rtc_helper
+                  << std::endl;
 
         size_t      tested    = 0;
         size_t      rejected  = 0;
