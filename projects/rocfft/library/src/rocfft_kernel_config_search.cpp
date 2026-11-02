@@ -186,6 +186,21 @@ bool factorization_has_inplace_radix(const std::vector<unsigned int>& factorizat
     });
 }
 
+// Which butterfly implementations to measure.  TEMPS reproduces the search
+// space as it was before the in-place forms existed.
+enum class RadixForm
+{
+    TEMPS,
+    INPLACE,
+    BOTH,
+};
+
+static const std::map<std::string, RadixForm> radix_form_map{
+    {"temps", RadixForm::TEMPS},
+    {"inplace", RadixForm::INPLACE},
+    {"both", RadixForm::BOTH},
+};
+
 std::string test_kernel_src(const std::string&               kernel_name,
                             hipDeviceProp_t                  device_prop,
                             unsigned int&                    transforms_per_block,
@@ -573,14 +588,19 @@ std::vector<candidate> enumerate_candidates(unsigned int                     len
                                             unsigned int                     max_tpb,
                                             unsigned int                     wgs_floor,
                                             unsigned int                     wgs_limit,
-                                            unsigned int                     lds_byte_limit)
+                                            unsigned int                     lds_byte_limit,
+                                            RadixForm                        radix_form)
 {
     std::vector<candidate> ret;
-    // the two butterfly forms trade registers against instruction-level
-    // parallelism, and which way that goes depends on the architecture, so
-    // both are measured rather than chosen here
-    std::vector<bool> radix_forms{false};
-    if(factorization_has_inplace_radix(factorization))
+    // The two butterfly forms trade registers against instruction-level
+    // parallelism, and which way that goes depends on the architecture, so by
+    // default both are measured rather than chosen here.  Only the odd radices
+    // have a second form, so for anything else this collapses to one.
+    std::vector<bool> radix_forms;
+    const bool        dual = factorization_has_inplace_radix(factorization);
+    if(radix_form != RadixForm::INPLACE || !dual)
+        radix_forms.push_back(false);
+    if(radix_form != RadixForm::TEMPS && dual)
         radix_forms.push_back(true);
 
     for(auto tpt : supported_threads_per_transform(factorization))
@@ -750,6 +770,7 @@ int main(int argc, char** argv)
     unsigned int  min_tpt        = 1;
     unsigned int  min_tpb        = 1;
     unsigned int  max_tpb        = 32;
+    RadixForm     radix_form     = RadixForm::BOTH;
     unsigned int  first_ordering = 1;
     unsigned int  last_ordering  = 0;
     unsigned int  ntop           = 20;
@@ -830,6 +851,19 @@ int main(int argc, char** argv)
                      "its own process to actually overlap.")
         ->default_val(rocfft_concurrency())
         ->check(CLI::PositiveNumber);
+    brute_force
+        ->add_option("--radix-form",
+                     radix_form,
+                     "Which butterfly implementations to measure for radix 3/5/7/9/11/13/17, "
+                     "which ship two: 'temps' uses the form with temporaries, 'inplace' the "
+                     "in-place one, 'both' measures each.  The in-place form spends far fewer "
+                     "registers but exposes less instruction-level parallelism, and which wins "
+                     "depends on the architecture and the rest of the config.  'both' is the "
+                     "default and roughly doubles the space for affected lengths; 'temps' "
+                     "reproduces the search space from before the second form existed.")
+        // no default_val: CLI11 would convert it through RadixForm rather than
+        // through the transformer below, so the initializer is the default
+        ->transform(CLI::CheckedTransformer(radix_form_map, CLI::ignore_case));
     brute_force->add_option("--rtc-helper",
                             rtc_helper_opt,
                             "Path to rocfft_rtc_helper, which compiles one candidate per "
@@ -1035,7 +1069,8 @@ int main(int argc, char** argv)
                                                max_tpb,
                                                wgs_floor,
                                                wgs_limit,
-                                               lds_byte_limit)
+                                               lds_byte_limit,
+                                               radix_form)
                               .size();
         auto rtc_helper = rtc_helper_opt.empty() ? locate_rtc_helper(argv[0])
                                                  : std::optional<std::string>(rtc_helper_opt);
@@ -1065,8 +1100,15 @@ int main(int argc, char** argv)
                 std::cout << " " << f;
             std::cout << std::endl;
 
-            auto candidates = enumerate_candidates(
-                length, factorization, min_tpt, min_tpb, max_tpb, wgs_floor, wgs_limit, lds_byte_limit);
+            auto candidates = enumerate_candidates(length,
+                                                   factorization,
+                                                   min_tpt,
+                                                   min_tpb,
+                                                   max_tpb,
+                                                   wgs_floor,
+                                                   wgs_limit,
+                                                   lds_byte_limit,
+                                                   radix_form);
             if(candidates.empty())
                 continue;
 
