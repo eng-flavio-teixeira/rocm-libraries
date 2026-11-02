@@ -35,7 +35,8 @@ namespace fs = std::filesystem;
 
 static const char* def_solution_map_path = "rocfft_solution_map.dat";
 
-const int   solution_map::VERSION                       = 3;
+// 4: KernelConfig carries inplace_radix
+const int   solution_map::VERSION                       = 4;
 const char* solution_map::KERNEL_TOKEN_BUILTIN_KERNEL   = "kernel_token_builtin_kernel";
 const char* solution_map::LEAFNODE_TOKEN_BUILTIN_KERNEL = "leafnode_token_builtin_kernel";
 

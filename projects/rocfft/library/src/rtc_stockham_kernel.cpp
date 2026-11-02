@@ -88,6 +88,7 @@ RTCKernel::RTCGenerator RTCKernelStockham::generate_from_node(const LeafNode&   
         specs->threads_per_transform = kernel->threads_per_transform[0];
         specs->half_lds              = kernel->half_lds;
         specs->direct_to_from_reg    = kernel->direct_to_from_reg;
+        specs->inplace_radix         = kernel->inplace_radix;
         specs->ebtype                = node.ebtype;
 
         if(node.isPartialPassEnabled())
@@ -138,6 +139,7 @@ RTCKernel::RTCGenerator RTCKernelStockham::generate_from_node(const LeafNode&   
                       PrintScheme(node.scheme));
         specs->threads_per_transform = kernel->threads_per_transform[0];
         specs->half_lds              = kernel->half_lds;
+        specs->inplace_radix         = kernel->inplace_radix;
         specs->ebtype                = node.ebtype;
 
         specs2d.emplace(itype,
@@ -149,6 +151,7 @@ RTCKernel::RTCGenerator RTCKernelStockham::generate_from_node(const LeafNode&   
                         PrintScheme(node.scheme));
         specs2d->threads_per_transform = kernel->threads_per_transform[1];
         specs2d->half_lds              = kernel->half_lds;
+        specs2d->inplace_radix         = kernel->inplace_radix;
         break;
     }
     default:

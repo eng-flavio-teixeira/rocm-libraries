@@ -253,6 +253,7 @@ void build_stockham_function_pool(CompileQueue& queue)
         specs.threads_per_transform = i.second.threads_per_transform[0];
         specs.half_lds              = i.second.half_lds;
         specs.direct_to_from_reg    = i.second.direct_to_from_reg;
+        specs.inplace_radix         = i.second.inplace_radix;
 
         stockham_combo(
             scheme,
@@ -689,6 +690,7 @@ void build_solution_kernels(CompileQueue& queue)
                 specs.threads_per_transform = config.threads_per_transform[0];
                 specs.half_lds              = config.half_lds;
                 specs.direct_to_from_reg    = config.direct_to_from_reg;
+                specs.inplace_radix         = config.inplace_radix;
                 specs.wgs_is_derived        = true;
                 // kernel_sol should specify the static_dim, need to set here,
                 // so move specs to local instead of captured (need mutable if captured)

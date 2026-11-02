@@ -37,6 +37,9 @@ struct KernelConfig
     bool                half_lds              = false;
     bool                direct_to_from_reg    = false;
     bool                intrinsic_buffer_inst = false;
+    // in-place butterflies for the odd radices: fewer registers, less
+    // instruction-level parallelism.  See rtc_radix_functions/radix_*.h.
+    bool                inplace_radix         = false;
     unsigned int        transforms_per_block  = 0;
     int                 workgroup_size        = 0;
     std::array<int, 2>  threads_per_transform = {0, 0};
@@ -80,11 +83,15 @@ struct KernelConfig
                  int                   static_dim            = 0,
                  PlacementCode         placement             = PC_UNSET,
                  rocfft_array_type     iAryType = rocfft_array_type_complex_interleaved,
-                 rocfft_array_type     oAryType = rocfft_array_type_complex_interleaved)
+                 rocfft_array_type     oAryType = rocfft_array_type_complex_interleaved,
+                 // last, because solution-shipping.py generates calls to this
+                 // constructor positionally
+                 bool                  inplace_radix = false)
         : use_3steps_large_twd(use_3steps)
         , half_lds(half_lds)
         , direct_to_from_reg(direct_to_from_reg)
         , intrinsic_buffer_inst(intrinsic_buffer_inst)
+        , inplace_radix(inplace_radix)
         , transforms_per_block(tpb)
         , workgroup_size(wgs)
         , threads_per_transform(tpt)
@@ -106,6 +113,7 @@ struct KernelConfig
                         half_lds,
                         direct_to_from_reg,
                         intrinsic_buffer_inst,
+                        inplace_radix,
                         transforms_per_block,
                         workgroup_size,
                         threads_per_transform,
@@ -114,6 +122,7 @@ struct KernelConfig
                            rhs.half_lds,
                            rhs.direct_to_from_reg,
                            rhs.intrinsic_buffer_inst,
+                           rhs.inplace_radix,
                            rhs.transforms_per_block,
                            rhs.workgroup_size,
                            rhs.threads_per_transform,
@@ -126,6 +135,7 @@ struct KernelConfig
                         half_lds,
                         direct_to_from_reg,
                         intrinsic_buffer_inst,
+                        inplace_radix,
                         transforms_per_block,
                         workgroup_size,
                         threads_per_transform,
@@ -134,6 +144,7 @@ struct KernelConfig
                           rhs.half_lds,
                           rhs.direct_to_from_reg,
                           rhs.intrinsic_buffer_inst,
+                          rhs.inplace_radix,
                           rhs.transforms_per_block,
                           rhs.workgroup_size,
                           rhs.threads_per_transform,
@@ -149,6 +160,7 @@ struct KernelConfig
            << ", half_lds: " << (half_lds ? "true" : "false")
            << ", direct_reg: " << (direct_to_from_reg ? "true" : "false")
            << ", try_use_buf_inst: " << (intrinsic_buffer_inst ? "true" : "false")
+           << ", inplace_radix: " << (inplace_radix ? "true" : "false")
            << ", tpb: " << transforms_per_block << ", wgs: " << workgroup_size << ", tpt: ["
            << threads_per_transform[0] << "," << threads_per_transform[1] << "], factors: [";
 
@@ -229,7 +241,11 @@ struct ToString<KernelConfig>
                + ",";
         str += FieldDescriptor<std::string>().describe("iAryType", PrintArrayType(value.iAryType))
                + ",";
-        str += FieldDescriptor<std::string>().describe("oAryType", PrintArrayType(value.oAryType));
+        str += FieldDescriptor<std::string>().describe("oAryType", PrintArrayType(value.oAryType))
+               + ",";
+        // appended rather than grouped with the other tunable fields so that
+        // the order of everything already written stays as it was
+        str += FieldDescriptor<bool>().describe("inplace_radix", value.inplace_radix);
 
         str += "}";
         return str;
@@ -273,6 +289,13 @@ struct FromString<KernelConfig>
             FieldParser<std::string>().parse("iAryType", iAryTypeStr, current);
             FieldParser<std::string>().parse("oAryType", oAryTypeStr, current);
         }
+
+        // added in version 4; older maps simply predate the second butterfly
+        // form, so the default of false is what they meant
+        if(DescriptorFormatVersion::UsingVersion >= 4)
+            FieldParser<bool>().parse("inplace_radix", ret.inplace_radix, current);
+        else
+            ret.inplace_radix = false;
 
         ret.ebType                   = StrToEBType(ebTypeStr);
         ret.placement                = StrToPlacementCode(placementStr);

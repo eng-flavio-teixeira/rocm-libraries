@@ -72,6 +72,7 @@ struct GeneratedLauncher
         , workgroup_size(kernel.launcher_workgroup_size())
         , half_lds(kernel.half_lds)
         , direct_to_from_reg(kernel.direct_to_from_reg)
+        , inplace_radix(kernel.inplace_radix)
         , sbrc_type(sbrc_type)
         , sbrc_transpose_type(sbrc_transpose_type)
         , precision_type(precision_type)
@@ -95,6 +96,7 @@ struct GeneratedLauncher
     unsigned int workgroup_size;
     bool         half_lds;
     bool         direct_to_from_reg;
+    bool         inplace_radix;
 
     // SBRC transpose type
     std::string sbrc_type;
@@ -140,6 +142,7 @@ struct GeneratedLauncher
         add_member("workgroup_size", std::to_string(workgroup_size));
         add_member("half_lds", half_lds ? "true" : "false");
         add_member("direct_to_from_reg", direct_to_from_reg ? "true" : "false");
+        add_member("inplace_radix", inplace_radix ? "true" : "false");
         add_member("sbrc_type", quote_str(sbrc_type));
         add_member("sbrc_transpose_type", quote_str(sbrc_transpose_type));
         add_member("precision_type", std::to_string(precision_type));
@@ -770,6 +773,11 @@ int main()
             dims = parse_uints_csv(*arg);
         }
 
+        // tokens are consumed back to front, so this reads in the opposite
+        // order to the one kernel-generator.py writes them
+        ++arg;
+        const bool inplace_radix = *arg == "1";
+
         ++arg;
         std::vector<bool> direct_to_from_reg;
         direct_to_from_reg = parse_bool_csv(*arg);
@@ -841,6 +849,7 @@ int main()
                                           scheme,
                                           transform_type);
             specs1.direct_to_from_reg    = direct_to_from_reg[0];
+            specs1.inplace_radix         = inplace_radix;
             specs1.threads_per_transform = threads_per_transform[0];
             specs1.wgs_is_derived        = true;
 
@@ -853,6 +862,7 @@ int main()
                                           scheme,
                                           transform_type);
             specs2.direct_to_from_reg    = direct_to_from_reg[1];
+            specs2.inplace_radix         = inplace_radix;
             specs2.threads_per_transform = threads_per_transform[1];
             specs2.wgs_is_derived        = true;
 
@@ -900,6 +910,7 @@ int main()
                                          transform_type);
             specs.half_lds           = half_lds;
             specs.direct_to_from_reg = direct_to_from_reg[0];
+            specs.inplace_radix      = inplace_radix;
 
             specs.bytes_per_element = bytes_per_element;
 
@@ -917,6 +928,7 @@ int main()
 
             if(!threads_per_transform.empty())
                 specs2d.threads_per_transform = threads_per_transform.back();
+            specs2d.inplace_radix = inplace_radix;
 
             // 2D_SINGLE kernels use the specified workgroup size
             // directly.

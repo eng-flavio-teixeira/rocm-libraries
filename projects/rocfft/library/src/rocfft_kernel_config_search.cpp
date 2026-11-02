@@ -150,7 +150,8 @@ std::string test_kernel_name(unsigned int                     length,
                              unsigned int                     wgs,
                              unsigned int                     tpt,
                              bool                             half_lds,
-                             bool                             direct_to_from_reg)
+                             bool                             direct_to_from_reg,
+                             bool                             inplace_radix)
 {
     std::string ret = "fft_test_len_";
     ret += std::to_string(length);
@@ -168,8 +169,21 @@ std::string test_kernel_name(unsigned int                     length,
         ret += "_halfLds";
     if(direct_to_from_reg)
         ret += "_dirReg";
+    if(inplace_radix)
+        ret += "_ipRad";
 
     return ret;
+}
+
+// The odd radices ship two butterfly implementations; the rest have only one,
+// so searching both forms for them would just double the work for identical
+// code.
+bool factorization_has_inplace_radix(const std::vector<unsigned int>& factorization)
+{
+    static const std::set<unsigned int> dual_form = {3, 5, 7, 9, 11, 13, 17};
+    return std::any_of(factorization.begin(), factorization.end(), [](unsigned int f) {
+        return dual_form.count(f) > 0;
+    });
 }
 
 std::string test_kernel_src(const std::string&               kernel_name,
@@ -182,7 +196,9 @@ std::string test_kernel_src(const std::string&               kernel_name,
                             unsigned int                     wgs,
                             unsigned int                     tpt,
                             bool                             half_lds,
-                            bool                             direct_to_from_reg)
+                            bool                             direct_to_from_reg,
+                            bool                             inplace_radix,
+                            unsigned int                     lds_byte_limit = 0)
 {
     StockhamGeneratorSpecs specs{KIntType::U32,
                                  factorization,
@@ -197,12 +213,15 @@ std::string test_kernel_src(const std::string&               kernel_name,
     specs.threads_per_transform = tpt;
     specs.half_lds              = half_lds;
     specs.direct_to_from_reg    = direct_to_from_reg;
+    specs.inplace_radix         = inplace_radix;
     // the search already chose transforms_per_block and sized wgs to
     // match, so take wgs as-is instead of letting the generator
     // re-derive it from the LDS budget
     specs.wgs_is_derived = true;
-    // aim for occupancy-2
-    specs.lds_byte_limit = device_prop.sharedMemPerBlock / 2;
+    // aim for occupancy-2.  dump-src overrides this so a kernel can be
+    // generated for an architecture other than the one running.
+    specs.lds_byte_limit
+        = lds_byte_limit ? lds_byte_limit : device_prop.sharedMemPerBlock / 2;
 
     return stockham_rtc(specs,
                         specs,
@@ -532,6 +551,7 @@ struct candidate
     unsigned int wgs;
     bool         half_lds;
     bool         direct_to_from_reg;
+    bool         inplace_radix;
     std::string  kernel_name;
 
     // filled in by the compile pass
@@ -556,6 +576,13 @@ std::vector<candidate> enumerate_candidates(unsigned int                     len
                                             unsigned int                     lds_byte_limit)
 {
     std::vector<candidate> ret;
+    // the two butterfly forms trade registers against instruction-level
+    // parallelism, and which way that goes depends on the architecture, so
+    // both are measured rather than chosen here
+    std::vector<bool> radix_forms{false};
+    if(factorization_has_inplace_radix(factorization))
+        radix_forms.push_back(true);
+
     for(auto tpt : supported_threads_per_transform(factorization))
     {
         // Low tpt means a high element count per thread, which is both the
@@ -584,17 +611,20 @@ std::vector<candidate> enumerate_candidates(unsigned int                     len
                     if(get_lds_bytes(length, tpb, half_lds) > lds_byte_limit)
                         continue;
 
-                    ret.push_back({tpt,
-                                   tpb,
-                                   wgs,
-                                   half_lds,
-                                   direct_to_from_reg,
-                                   test_kernel_name(length,
-                                                    factorization,
-                                                    wgs,
-                                                    tpt,
-                                                    half_lds,
-                                                    direct_to_from_reg)});
+                    for(bool inplace_radix : radix_forms)
+                        ret.push_back({tpt,
+                                       tpb,
+                                       wgs,
+                                       half_lds,
+                                       direct_to_from_reg,
+                                       inplace_radix,
+                                       test_kernel_name(length,
+                                                        factorization,
+                                                        wgs,
+                                                        tpt,
+                                                        half_lds,
+                                                        direct_to_from_reg,
+                                                        inplace_radix)});
                 }
             }
         }
@@ -653,7 +683,8 @@ void compile_candidates(std::vector<candidate>&           candidates,
                                                c.wgs,
                                                c.tpt,
                                                c.half_lds,
-                                               c.direct_to_from_reg);
+                                               c.direct_to_from_reg,
+                                               c.inplace_radix);
                     c.code = compile_subprocess(src, device_prop.gcnArchName, rtc_helper);
                 }
                 catch(std::exception& e)
@@ -679,6 +710,7 @@ struct config_result
     unsigned int              tpb;
     bool                      half_lds;
     bool                      direct_to_from_reg;
+    bool                      inplace_radix;
     std::vector<unsigned int> factorization;
 };
 
@@ -703,6 +735,8 @@ std::string config_line(const config_result& r, unsigned int length)
         os << ", half_lds=False";
     if(!r.direct_to_from_reg)
         os << ", direct_to_from_reg=False";
+    if(r.inplace_radix)
+        os << ", inplace_radix=True";
     os << ", gcn_arch_name=" << config_arch_name(get_curr_gcn_arch_name()) << ")";
     return os.str();
 }
@@ -809,6 +843,7 @@ int main(int argc, char** argv)
     unsigned int              tpt;
     bool                      half_lds           = true;
     bool                      direct_to_from_reg = true;
+    bool                      inplace_radix      = false;
 
     manual_tuning
         ->add_option("--kernel-type", kernel_type, "The valid types are: sbrr/sbcc/sbrc/sbcr")
@@ -829,6 +864,42 @@ int main(int argc, char** argv)
     manual_tuning->add_option("--half-lds", half_lds, "Use half LDS or not")->default_val(true);
     manual_tuning->add_option("--direct-reg", direct_to_from_reg, "Direct load to/from reg")
         ->default_val(true);
+    manual_tuning
+        ->add_option("--inplace-radix",
+                     inplace_radix,
+                     "Use the in-place butterflies for radix 3/5/7/9/11/13/17.  Fewer "
+                     "registers, less instruction-level parallelism.")
+        ->default_val(false);
+
+    // Emit the source for one candidate without compiling or running it, so
+    // register usage and occupancy can be inspected offline with an offline
+    // compiler.  The generator makes no architecture-specific decisions, so
+    // one dump can be compiled for any target.
+    auto dump_src = app.add_subcommand("dump-src", "print the kernel source for one config");
+
+    unsigned int lds_byte_limit = 0;
+
+    dump_src->add_option("-l, --length", length, "Select a 1D FFT problem size")->default_val(8);
+    dump_src
+        ->add_option("-f, --factorization", factorization, "Factorization for a given FFT problem")
+        ->required();
+    dump_src->add_option("-w, --wgs", wgs, "Work group size")->default_val(64);
+    dump_src->add_option("--tpt", tpt, "Thread per transform")->default_val(1);
+    dump_src->add_option("--half-lds", half_lds, "Use half LDS or not")->default_val(true);
+    dump_src->add_option("--direct-reg", direct_to_from_reg, "Direct load to/from reg")
+        ->default_val(true);
+    dump_src
+        ->add_option("--inplace-radix",
+                     inplace_radix,
+                     "Use the in-place butterflies for radix 3/5/7/9/11/13/17")
+        ->default_val(false);
+    dump_src
+        ->add_option("--precision", precision, "Transform precision: single (default), double, half")
+        ->transform(CLI::CheckedTransformer(precision_map, CLI::ignore_case));
+    dump_src->add_option("--lds-limit",
+                         lds_byte_limit,
+                         "LDS bytes the generator may use, to generate for an architecture other "
+                         "than the one running.  Defaults to half this device's shared memory.");
 
     app.require_subcommand(0, 1);
 
@@ -849,6 +920,30 @@ int main(int argc, char** argv)
     // Todo: support device id
     if(hipGetDeviceProperties(&device_prop, 0) != hipSuccess)
         throw std::runtime_error("hipGetDeviceProperties failure");
+
+    if(dump_src->parsed())
+    {
+        auto kernel_name = test_kernel_name(
+            length, factorization, wgs, tpt, half_lds, direct_to_from_reg, inplace_radix);
+        unsigned int transforms_per_block = 0;
+        auto         src                  = test_kernel_src(kernel_name,
+                                                            device_prop,
+                                                            transforms_per_block,
+                                                            length,
+                                                            compute_scheme,
+                                                            precision,
+                                                            factorization,
+                                                            wgs,
+                                                            tpt,
+                                                            half_lds,
+                                                            direct_to_from_reg,
+                                                            inplace_radix,
+                                                            lds_byte_limit);
+        // name and derived tpb on stderr so stdout stays pure source
+        std::cerr << kernel_name << " transforms_per_block " << transforms_per_block << std::endl;
+        std::cout << src;
+        return 0;
+    }
 
     if(brute_force->parsed())
     {
@@ -1055,6 +1150,7 @@ int main(int argc, char** argv)
                                    c.transforms_per_block,
                                    c.half_lds,
                                    c.direct_to_from_reg,
+                                   c.inplace_radix,
                                    factorization});
             }
 
@@ -1097,7 +1193,7 @@ int main(int argc, char** argv)
         std::cout << "top " << nshow << " of " << results.size() << " correct configs for length "
                   << length << " on " << device_prop.gcnArchName << std::endl;
         std::cout << "rank,time_ms,rel_to_best,workgroup_size,threads_per_transform,"
-                     "transforms_per_block,half_lds,direct_to_from_reg,factors"
+                     "transforms_per_block,half_lds,direct_to_from_reg,inplace_radix,factors"
                   << std::endl;
         for(size_t i = 0; i < nshow; ++i)
         {
@@ -1106,7 +1202,8 @@ int main(int argc, char** argv)
                       << std::setprecision(4) << static_cast<double>(r.time) / best.time << ','
                       << r.wgs << ',' << r.tpt << ',' << r.tpb << ','
                       << (r.half_lds ? "True" : "False") << ','
-                      << (r.direct_to_from_reg ? "True" : "False") << ',';
+                      << (r.direct_to_from_reg ? "True" : "False") << ','
+                      << (r.inplace_radix ? "True" : "False") << ',';
             bool first_factor = true;
             for(auto f : r.factorization)
             {
@@ -1130,13 +1227,14 @@ int main(int argc, char** argv)
             best_by_tpb.emplace(r.tpb, &r);
         std::cout << "best per transforms_per_block for length " << length << std::endl;
         std::cout << "transforms_per_block,time_ms,rel_to_best,workgroup_size,"
-                     "threads_per_transform,half_lds,direct_to_from_reg"
+                     "threads_per_transform,half_lds,direct_to_from_reg,inplace_radix"
                   << std::endl;
         for(const auto& [tpb, r] : best_by_tpb)
             std::cout << tpb << ',' << std::setprecision(4) << static_cast<double>(r->time) << ','
                       << std::setprecision(4) << static_cast<double>(r->time) / best.time << ','
                       << r->wgs << ',' << r->tpt << ',' << (r->half_lds ? "True" : "False") << ','
-                      << (r->direct_to_from_reg ? "True" : "False") << std::endl;
+                      << (r->direct_to_from_reg ? "True" : "False") << ','
+                      << (r->inplace_radix ? "True" : "False") << std::endl;
     }
     else if(manual_tuning->parsed())
     {
@@ -1184,7 +1282,8 @@ int main(int argc, char** argv)
             // half lds currently requires direct to/from reg
 
             auto kernel_name
-                = test_kernel_name(length, factorization, wgs, tpt, half_lds, direct_to_from_reg);
+                = test_kernel_name(
+                    length, factorization, wgs, tpt, half_lds, direct_to_from_reg, inplace_radix);
             unsigned int transforms_per_block = 0;
 
             auto kernel_src = test_kernel_src(kernel_name,
@@ -1197,7 +1296,8 @@ int main(int argc, char** argv)
                                               wgs,
                                               tpt,
                                               half_lds,
-                                              direct_to_from_reg);
+                                              direct_to_from_reg,
+                                              inplace_radix);
 
             auto                code = compile_inprocess(kernel_src, device_prop.gcnArchName);
             hipModule_wrapper_t module;

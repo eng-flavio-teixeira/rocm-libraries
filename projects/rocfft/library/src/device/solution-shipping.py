@@ -92,6 +92,10 @@ class KernelConfig(BaseNode):
         kc += ', StrToArrayType("' + str(self.config['iAryType']) + '")'
         kc += ', StrToArrayType("' + str(self.config['oAryType']) + '")'
 
+        # solution maps written before format version 4 have no such field
+        inplace_radix = self.config.get('inplace_radix')
+        kc += ', true' if inplace_radix == True else ', false'
+
         kc += ')'
         return kc
 

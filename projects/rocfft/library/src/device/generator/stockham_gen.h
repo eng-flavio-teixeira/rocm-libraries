@@ -68,6 +68,12 @@ struct StockhamGeneratorSpecs
     unsigned int threads_per_transform_pp = 0;
     bool         half_lds                 = false;
     bool         direct_to_from_reg       = false;
+    // Use the in-place butterflies for the odd radices, which spend far fewer
+    // registers but expose less instruction-level parallelism.  Only radix
+    // 3/5/7/9/11/13/17 have a second form; for anything else this has no
+    // effect.  Off by default, so the generated code is unchanged unless a
+    // tuned configuration asks for it.
+    bool         inplace_radix            = false;
     // dimension of the kernel - 0 if the generated kernel accepts a
     // 'dim' argument at runtime; otherwise the dimension is
     // statically defined for the kernel

@@ -60,7 +60,9 @@ LaunchParams = namedtuple(
         'workgroup_size',
         'threads_per_transform',
         'half_lds',  # load real and imag part separately with half regular lds resource to increase occupancy
-        'direct_to_from_reg'
+        'direct_to_from_reg',
+        # use the in-place butterflies for radix 3/5/7/9/11/13/17
+        'inplace_radix'
     ]
 )  # load from global mem to registers directly and store from registers to global mem.
 
@@ -281,14 +283,20 @@ class FFTKernel(BaseNode):
             [str(s) for s in self.function.meta.threads_per_transform]) + '}'
         direct_to_from_reg = None
         half_lds = None
+        inplace_radix = None
         if hasattr(self.function.meta, 'params'):
             half_lds = getattr(self.function.meta.params, 'half_lds', None)
             direct_to_from_reg = getattr(self.function.meta.params,
                                          'direct_to_from_reg', None)
+            inplace_radix = getattr(self.function.meta.params,
+                                    'inplace_radix', None)
         if half_lds is not None:
             f += ', ' + str(half_lds).lower()
         if direct_to_from_reg is not None:
             f += ', ' + str(direct_to_from_reg).lower()
+            # FFTKernel takes these positionally, so this may only be emitted
+            # when direct_to_from_reg was, or it would land in its slot
+            f += ', ' + str(bool(inplace_radix)).lower()
         f += ', '
 
         f += 'true' if aot_rtc else 'false'
@@ -666,6 +674,7 @@ def generate_kernel_functions(precisions_type_dict, transform_type_dict,
             threads_per_transform = workgroup_size // transforms_per_block
             half_lds = launcher.half_lds
             direct_to_from_reg = launcher.direct_to_from_reg
+            inplace_radix = getattr(launcher, 'inplace_radix', False)
             scheme = launcher.scheme
             pp_child_scheme = launcher.pp_child_scheme
             pp_threads_per_transform = launcher.pp_threads_per_transform
@@ -686,7 +695,7 @@ def generate_kernel_functions(precisions_type_dict, transform_type_dict,
 
             params = LaunchParams(transforms_per_block, workgroup_size,
                                   threads_per_transform, half_lds,
-                                  direct_to_from_reg)
+                                  direct_to_from_reg, inplace_radix)
 
             # make 2D list of threads_per_transform to populate FFTKernel
             tpt_list = kernel.threads_per_transform if scheme == 'CS_KERNEL_2D_SINGLE' else [
@@ -823,6 +832,11 @@ def generate_kernels(precision_type_dict, transform_type_dict, kernels,
                 # for unspecified direct_to_from_reg, default is True only for CS_KERNEL_STOCKHAM and SBCC
                 direct_to_from_reg = getattr(k, 'direct_to_from_reg', True)
                 proc.stdin.write(' 1' if direct_to_from_reg else ' 0')
+
+            # only radix 3/5/7/9/11/13/17 have a second, in-place butterfly;
+            # default off so configs that don't mention it are unaffected
+            proc.stdin.write(
+                ' 1' if getattr(k, 'inplace_radix', False) else ' 0')
 
             # check for data specific to partial-pass 3D kernels
             if hasattr(k, 'dims'):

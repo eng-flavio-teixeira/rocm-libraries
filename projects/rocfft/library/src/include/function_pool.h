@@ -104,6 +104,8 @@ struct FFTKernel
     bool               use_3steps_large_twd  = false;
     bool               half_lds              = false;
     bool               direct_to_from_reg    = false;
+    // in-place butterflies for the odd radices; see rtc_radix_functions
+    bool               inplace_radix         = false;
     // true if this kernel is compiled ahead of time (i.e. at library
     // build time), using runtime compilation.
     bool aot_rtc = false;
@@ -122,6 +124,7 @@ struct FFTKernel
               std::array<int, 2>&&        tpt,
               bool                        half_lds           = false,
               bool                        direct_to_from_reg = false,
+              bool                        inplace_radix      = false,
               bool                        aot_rtc            = false,
               ComputeScheme               scheme             = CS_NONE,
               unsigned int                current_dim        = 0,
@@ -136,6 +139,7 @@ struct FFTKernel
         , use_3steps_large_twd(use_3steps)
         , half_lds(half_lds)
         , direct_to_from_reg(direct_to_from_reg)
+        , inplace_radix(inplace_radix)
         , aot_rtc(aot_rtc)
         , pp_params(scheme, current_dim, off_dim, pp_tpt, pp_factors_curr, pp_factors_other)
     {
@@ -152,6 +156,7 @@ struct FFTKernel
         , use_3steps_large_twd(config.use_3steps_large_twd)
         , half_lds(config.half_lds)
         , direct_to_from_reg(config.direct_to_from_reg)
+        , inplace_radix(config.inplace_radix)
     {
         // The kernel works out each thread's transform within the
         // block as workgroup_size / threads_per_transform, while the
@@ -180,6 +185,7 @@ struct FFTKernel
         config.use_3steps_large_twd  = use_3steps_large_twd;
         config.half_lds              = half_lds;
         config.direct_to_from_reg    = direct_to_from_reg;
+        config.inplace_radix         = inplace_radix;
         config.factors               = factors;
 
         return config;

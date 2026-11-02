@@ -234,6 +234,11 @@ std::string stockham_rtc_kernel_name(const StockhamGeneratorSpecs&    specs,
     if(dir2regMode == DirectRegType::TRY_ENABLE_IF_SUPPORT)
         kernel_name += "_dirReg";
 
+    // this changes the generated butterfly bodies, so it has to be part of the
+    // name - the RTC cache is keyed on it
+    if(specs.inplace_radix)
+        kernel_name += "_ipRad";
+
     // callback kernels need to disable buffer load/store
     if(cbtype != CallbackType::NONE || dir2regMode == DirectRegType::FORCE_OFF_OR_NOT_SUPPORT)
         intrinsicMode = IntrinsicAccessType::DISABLE_BOTH;
@@ -464,6 +469,9 @@ std::string stockham_rtc(const StockhamGeneratorSpecs&    specs,
     // only SBCCs need this
     if(scheme == CS_KERNEL_STOCKHAM_BLOCK_CC || scheme == CS_KERNEL_STOCKHAM_PP_BLOCK_CC)
         src += large_twiddles_h;
+    // must precede the radix headers, which select their body on it
+    if(specs.inplace_radix)
+        src += "#define ROCFFT_INPLACE_RADIX 1\n";
     // append the necessary functions only
     append_radix_h(src, all_factors);
     // SBCCs don't need this
