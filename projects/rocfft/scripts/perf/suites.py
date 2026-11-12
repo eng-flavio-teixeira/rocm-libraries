@@ -386,6 +386,16 @@ lengths = {
         (2048, 2048, 2048),
     ],
 
+    # The lengths the Stockham SBRR kernel model was fitted and validated on:
+    # the 13 prime-power and 23 mixed-radix lengths of the tuning sweep, with
+    # 729 and 2048 appearing in both of those sets.
+    'model_sbrr': [
+        64, 81, 105, 108, 121, 125, 128, 150, 169, 243,
+        256, 289, 392, 512, 625, 675, 729, 750, 972, 1000,
+        1001, 1024, 1176, 1500, 1568, 1575, 2000, 2025, 2048, 2187,
+        2250, 3000, 3125, 3888,
+    ],
+
 }
 # yapf: enable
 
@@ -834,6 +844,96 @@ def batch_const_count():
                                       inplace=place,
                                       real=False,
                                       precision=precision)
+
+
+# The tuning sweep placed each problem at 5%, 95% and 200% of the last level
+# cache, which cannot be reproduced without knowing the cache size.  It does not
+# need to be: the caches are themselves powers of two -- 8 MiB on MI250X, 64 MiB
+# on the R9700, 256 MiB on MI325X -- and 95% is ~1x, 200% is 2x and 5% is ~1/16,
+# so a power-of-two ladder of byte footprints lands on every regime of every
+# board to within 25% with no device query at all:
+#
+#   footprint   MI250X (8 MiB)   R9700 (64 MiB)   MI325X (256 MiB)
+#     0.5 MiB   5%   (0.4)                                           [dropped]
+#       4 MiB   50%  (4)        5%   (3.2)
+#       8 MiB   95%  (7.6)
+#      16 MiB   200% (16)                         5%   (12.8)
+#      64 MiB                    95%  (60.8)
+#     128 MiB                    200% (128)
+#     256 MiB                                     95%  (243.2)
+#     512 MiB                                     200% (512)
+#
+# The 32 MiB rung in between is kept so the cache transition is still bracketed
+# on a board that is not in that list.
+#
+# The ladder starts at 4 MiB rather than 0.5.  Running the suite twice against an
+# unchanged build measures how much the harness can resolve, since develop is
+# then the same binary running the same configs both times, and below 4 MiB it
+# resolves nothing.  Standard deviation of develop's own run-to-run change, by
+# footprint, over the 34 lengths of this suite and both directions:
+#
+#   footprint   RX 9070 XT   MI250X   MI325X
+#     0.5 MiB      8.6%      14.7%     4.4%
+#       1 MiB     18.8%      12.3%     1.7%
+#       2 MiB     44.9%      13.3%     1.8%
+#       4 MiB      6.7%       1.4%     1.4%
+#       8 MiB      6.5%       0.8%     1.2%
+#      32 MiB      2.9%       0.7%     2.7%
+#     128 MiB      0.3%       0.5%     0.7%
+#
+# A rung that cannot tell a 10% change from nothing does not report a result, it
+# reports the harness, so the three below 4 MiB are gone.  Two of them (1 and 2
+# MiB) were never a regime of any board above anyway.  The cost is MI250X's 5%
+# point: 5% of 8 MiB is 0.4 MiB, which is a few microseconds of work on any of
+# these boards, so no choice of batch makes it measurable -- the noise tracks the
+# footprint, not the transform count, and restricting to larger batches within a
+# rung makes it worse rather than better.  MI250X keeps 4 MiB at 50% of its cache,
+# 8 MiB at 95% and 16 MiB at 200%, so the transition is still bracketed.
+model_footprint_exponents = list(range(22, 30))  # 4 MiB .. 512 MiB
+
+# rocfft_kernel_config_search sizes a problem as input plus output, so F bytes
+# of footprint is F / (2 * length * 8) single-precision complex transforms.
+# Matching that convention keeps these batches comparable with the sweep the
+# model was fitted on.
+model_bytes_per_element = 8
+
+
+def model_sbrr():
+    """Lengths addressed by the fitted Stockham SBRR kernel model.
+
+    Single-precision complex-to-complex out-of-place, both directions, over a
+    footprint ladder that brackets the cache regimes the model was fitted on
+    without knowing which GPU is running.
+
+    Double precision is deliberately absent: the model was fitted on a
+    single-precision sweep, and its half_lds=0 rule needs length * 16 bytes of
+    LDS, which does not fit the budget for the longer lengths here.
+
+    Real transforms are deliberately absent: a real transform of length N runs
+    the complex kernel for N/2, so it would exercise a different kernel than the
+    one the model predicted for N.  Bench 'model_sbrr' lengths doubled if you
+    want the real path to land on these kernels.
+
+    In-place is absent for the same kind of reason: it uses one buffer rather
+    than two, which halves the footprint and so moves every problem off the
+    rung it was placed on.
+
+    The ladder stops short of the smallest footprints on purpose; see the table
+    above model_footprint_exponents for what the harness can resolve there.
+    """
+    for direction, exp in product(all_directions, model_footprint_exponents):
+        for length in lengths['model_sbrr']:
+            nbatch = (1 << exp) // (2 * length * model_bytes_per_element)
+            if nbatch < 1:
+                continue
+            yield Problem([length],
+                          tag=mktag("model_sbrr_fp2e" + str(exp), 1, 'single',
+                                    direction, False, False),
+                          nbatch=nbatch,
+                          direction=direction,
+                          inplace=False,
+                          real=False,
+                          precision='single')
 
 
 def benchmarks():

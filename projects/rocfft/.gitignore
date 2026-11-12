@@ -40,3 +40,6 @@ build/
 
 # python bytecode
 __pycache__
+
+.agent
+.rocprofv3
