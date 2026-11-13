@@ -367,11 +367,49 @@
 # Step 7 is the second least important rule in the model by that measure,
 # which is also why giving it the right answer recovers so little: 0.64
 # points pooled, 7.3% of the 8.71 available (j104).  The three worth
-# attacking are ept, half_lds and ordering, together 81%.  half_lds is
-# the most promising of the three because it is the only unconditional
-# rule among them and j57 rejected every conditional form on data that
-# predates the in-place radix dimension, so that question is open again
-# rather than settled.
+# attacking are ept, half_lds and ordering, together 81%.
+#
+# That ranking answers which rule should pick better, which is the right
+# question only if the model commits to one candidate.  In the intended
+# hybrid plan path it does not: it produces a shortlist and rocFFT times
+# it.  Scored that way instead - each rule dropped from the chain so the
+# benchmark decides it, against the mean number of kernels that then have
+# to be compiled and timed - the order changes completely (j106):
+#
+#   rule left open   values        kernels   regret   points/kernel
+#   half_lds         2                1.96    6.812           1.975
+#   multiset         divisors         3.41    6.853           0.772
+#   ept              divisors         5.95    5.380           0.674
+#   ordering         permutations     7.24    6.319           0.384
+#   inplace          2                1.92    8.384           0.357
+#   dtfr             2                1.96    8.386           0.339
+#   tpb              powers of 2     15.11    5.158           0.252
+#
+# half_lds is the best buy by a factor of two and a half, and the reason
+# is its arity: two values, so declining to decide it costs 0.96 of an
+# extra kernel and removes 1.900 points, 95% CI [1.548, 2.296] - 21.8% of
+# the model's regret for one more compile.  8.712% becomes 6.812%, the
+# worst cell 120.5 becomes 82.2, and 867 leaves the worst list.  So in a
+# hybrid plan the thing to do with half_lds is emit both and stop trying
+# to predict it.  Modelling effort pays where the arity is the length's
+# divisor or permutation count, because leaving those open is not a
+# shortlist, it is the brute-force search the model exists to replace.
+#
+# Spending kernels greedily where they buy the most:
+#
+#   left to the benchmark   kernels   regret   worst cell
+#   nothing                    1.0    8.712        120.5
+#   + half_lds                 2.0    6.812         82.2
+#   + multiset                 6.6    5.164         44.9
+#   + ept                     34.3    3.664         27.3
+#   + tpb                    189.6    2.071         24.6
+#   + dtfr                   269.0    1.906         15.0
+#   + ordering              3503.4    0.057          6.3
+#   + inplace               6197.8    0.000          0.0
+#
+# The knee is at six or seven kernels for 5.16%.  The last row is the
+# exhaustive search reaching the zero it has to reach by definition,
+# which is the check that the measurement is sound.
 #
 # LDS budget
 # ----------
