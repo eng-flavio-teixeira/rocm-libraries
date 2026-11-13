@@ -328,6 +328,51 @@
 # wave-size effect, so fixing step 7 should not be expected to pay on
 # gfx942 the way fixing step 3 did.
 #
+# FALSIFIED, 180 cells, run_stamp step_7_sweep.  The ladder came back
+# unordered: eight sign changes in the floor-against-ceil preference
+# along lam*, and the fraction of cells preferring ceil wanders around
+# 0.5 with no relation to lam* at all - 0.92 at lam*=0.84, 0.17 at 4.87,
+# 0.83 at 10.1, 0.58 at 18.9.  Both strata agree (0.52 and 0.60), so it
+# is not an artefact of one band.  That was the designed falsification
+# condition and what it kills is not round-up but the whole family: step
+# 7's cost is not a function of the distance from tpb to its target, so
+# no reading of that distance is the right shape (j103).
+#
+# Step 7 therefore stays exactly as deployed.  Pooled over all 1,176
+# cells no lam beats lam=1 by more than 0.11 points and nothing clears
+# zero except lam=1.25 and lam=1.5, which are a hair from nearest and
+# almost certainly noise.
+#
+# The sweep also corrected the diagnosis that motivated it.  867's regret
+# is not step 7's: on all twelve of its cells the optimum is dropped at
+# step 4 or step 5, by half_lds=0 or by the ordering rule, before step 7
+# chooses anything (j105).  The gfx942 optimum there is half_lds=True,
+# which no reading of step 7 can reach.  Rounding step 7 up happened to
+# land on the optimum's tpt and tpb while still missing its half_lds,
+# which is why it improved the number without addressing the cause - and
+# why it did not survive contact with fresh lengths.
+#
+# What the set did establish, which is more useful than the question it
+# was built for: the model keeps the optimum through all seven rules in
+# only 55 of 1,176 cells, and in those 55 the regret is exactly zero.  So
+# every point of regret the model has is a cell where some rule narrowed
+# the optimum away, and the rules are not equally guilty.  By the step
+# that drops it first, as a share of all regret:
+#
+#   3. ept       31.2%     1. dtfr        5.3%
+#   4. half_lds  25.9%     7. tpb         4.8%
+#   5. ordering  24.4%     6. multiset    1.1%
+#   2. inplace    7.3%
+#
+# Step 7 is the second least important rule in the model by that measure,
+# which is also why giving it the right answer recovers so little: 0.64
+# points pooled, 7.3% of the 8.71 available (j104).  The three worth
+# attacking are ept, half_lds and ordering, together 81%.  half_lds is
+# the most promising of the three because it is the only unconditional
+# rule among them and j57 rejected every conditional form on data that
+# predates the in-place radix dimension, so that question is open again
+# rather than settled.
+#
 # LDS budget
 # ----------
 # The tuner's LDS allowance is sharedMemPerBlock/2, which is 32 KiB on
@@ -363,6 +408,37 @@
 # one has 32 KiB numbers on three boards, so a new board joins a paired
 # comparison rather than starting a new baseline.  Note that 121, 169,
 # 289 and 1001 have existing data at 95% only.
+#
+# Candidates the tuner rejects
+# ----------------------------
+# The tuner checks every candidate against a double-precision reference
+# DFT before timing it and drops anything whose relative RMS error is
+# over 1e-3, so a sweep that prints INCORRECT lines is reporting a
+# codegen defect and not a tuning result.  Across every sweep in this
+# file they fall on six lengths and no others: 108, 392 and 784 from the
+# earlier sets, and 416, 495 and 616 added by the tpb set - 2,054
+# distinct configs there, reproducible on all four boards, so it is not
+# one compiler.
+#
+# The tpb failures are not scattered.  Every one has 11 or 13 as its
+# first or second radix and a high elements-per-thread:
+#
+#   416   13 first or second, tpt  8, ept 52   error 0.294 - 0.429
+#   416   13 first or second, tpt 16, ept 26   error 0.0474
+#   495   11-5-3-3,           tpt 11, ept 45   error 0.229 - 0.232
+#   616   11-7-2-2-2, 11-7-2-4, tpt 11, ept 56 error 0.141 - 0.301
+#
+# The second line is the useful one: 13-4-2-4 and 13-4-2-2-2 fail at both
+# tpt 8 and tpt 16, same factorization, and halving the ept drops the
+# error by a factor of six.  So the error is graded in ept rather than
+# being a wrong answer from a broken kernel, which points at something
+# accumulating or wrapping per element rather than at the butterfly.
+#
+# Nothing compiles and then silently returns a wrong answer - the tuner
+# catches all of it - so this costs coverage rather than correctness: a
+# rejected candidate is one the model may well be predicting and the
+# sweep cannot score.  Worth filing against the Stockham generator, and
+# worth re-checking after any change to it.
 #
 # MAX_TPB has to be raised or the experiment cannot fail: the default 32
 # is below what the scaled reading asks for at length 64 and exactly at
