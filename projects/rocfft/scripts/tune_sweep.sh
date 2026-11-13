@@ -373,43 +373,79 @@
 # question only if the model commits to one candidate.  In the intended
 # hybrid plan path it does not: it produces a shortlist and rocFFT times
 # it.  Scored that way instead - each rule dropped from the chain so the
-# benchmark decides it, against the mean number of kernels that then have
-# to be compiled and timed - the order changes completely (j106):
+# benchmark decides it, against the number of kernels that then have to be
+# compiled and timed - the order changes completely (j106).
 #
-#   rule left open   values        kernels   regret   points/kernel
-#   half_lds         2                1.96    6.812           1.975
-#   multiset         divisors         3.41    6.853           0.772
-#   ept              divisors         5.95    5.380           0.674
-#   ordering         permutations     7.24    6.319           0.384
-#   inplace          2                1.92    8.384           0.357
-#   dtfr             2                1.96    8.386           0.339
-#   tpb              powers of 2     15.11    5.158           0.252
+# The counts below are per cell, and a cell is one (board, pct, length),
+# where pct is the share of last-level cache the batch count is set to
+# fill.  So a cell is one concrete problem as a plan sees it - this card,
+# this length, this batch size - and a kernel count is the compile and
+# time latency one rocfft_plan_create would wait through.  Not length
+# plus placement plus direction: neither varies anywhere in this data,
+# every measurement is a forward single-precision transform, and the
+# inplace rule is the in-place radix butterfly flag rather than the FFT's
+# placement.  The tail matters more than the mean, because plan creation
+# is latency the caller sees once and not a throughput average.
 #
-# half_lds is the best buy by a factor of two and a half, and the reason
-# is its arity: two values, so declining to decide it costs 0.96 of an
-# extra kernel and removes 1.900 points, 95% CI [1.548, 2.296] - 21.8% of
-# the model's regret for one more compile.  8.712% becomes 6.812%, the
-# worst cell 120.5 becomes 82.2, and 867 leaves the worst list.  So in a
-# hybrid plan the thing to do with half_lds is emit both and stop trying
-# to predict it.  Modelling effort pays where the arity is the length's
-# divisor or permutation count, because leaving those open is not a
-# shortlist, it is the brute-force search the model exists to replace.
+#                                 kernels per plan
+#   rule open   values         mean  med  p95  worst    >2  >16  regret  pts/k
+#   half_lds    2              1.96    2    2      2     0    0   6.812  1.975
+#   multiset    divisors       3.41    2   12     17   481   18   6.853  0.772
+#   ept         divisors       5.95    6   12     17  1026    9   5.380  0.674
+#   ordering    permutations   7.24    5   24     36   939  100   6.319  0.384
+#   inplace     2              1.92    2    2      2     0    0   8.384  0.357
+#   dtfr        2              1.96    2    2      2     0    0   8.386  0.339
+#   tpb         powers of 2   15.11  9.5   41     64  1011  396   5.158  0.252
+#
+# '>2' and '>16' are how many of the 1,176 cells need more than that many
+# kernels.  For scale, the exhaustive search the model replaces is 6,198
+# kernels on the mean cell, 2,544 on the median and 85,368 on the worst.
+#
+# half_lds is the best buy by a factor of two and a half, and the only
+# rule whose cost is bounded: the shortlist is exactly two kernels on
+# 1,131 of the 1,176 cells and one on the other 45, where only one value
+# is legal.  Never three, at any length, on any board - the rule is
+# binary and it is the last thing left undecided, so nothing downstream
+# can multiply the count.  That 0.96 of an extra kernel removes 1.900
+# points, 95% CI [1.548, 2.296] - 21.8% of the model's regret for one
+# more compile.  8.712% becomes 6.812%, the worst cell 120.5 becomes
+# 82.2, and 867 leaves the worst list.  So in a hybrid plan the thing to
+# do with half_lds is emit both and stop trying to predict it.
+#
+# The contrast with the rules worth modelling is in the tail rather than
+# the mean.  ept averages 5.9 kernels but needs 17 on its worst cell and
+# more than two on 1,026 of 1,176; ordering reaches 36; tpb reaches 64
+# with 396 cells above sixteen.  Those are the rules whose arity is the
+# length's divisor or permutation count, so leaving them open is not a
+# shortlist, it is the brute-force search the model exists to replace -
+# and a plan whose compile count swings between 2 and 64 depending on how
+# the length happens to factor is not a latency budget anyone can hold.
 #
 # Spending kernels greedily where they buy the most:
 #
-#   left to the benchmark   kernels   regret   worst cell
-#   nothing                    1.0    8.712        120.5
-#   + half_lds                 2.0    6.812         82.2
-#   + multiset                 6.6    5.164         44.9
-#   + ept                     34.3    3.664         27.3
-#   + tpb                    189.6    2.071         24.6
-#   + dtfr                   269.0    1.906         15.0
-#   + ordering              3503.4    0.057          6.3
-#   + inplace               6197.8    0.000          0.0
+#   left to the benchmark    mean   med    p95  worst   regret  worst cell
+#   nothing                   1.0     1      1      1    8.712       120.5
+#   + half_lds                2.0     2      2      2    6.812        82.2
+#   + multiset                6.6     4     22     34    5.164        44.9
+#   + ept                    34.3    18    106    270    3.664        27.3
+#   + tpb                   189.6    88    671   3398    2.071        24.6
+#   + dtfr                  269.0   120    932   5097    1.906        15.0
+#   + ordering             3503.4  1290  15312  42684    0.057         6.3
+#   + inplace              6197.8  2544  24277  85368    0.000         0.0
 #
-# The knee is at six or seven kernels for 5.16%.  The last row is the
-# exhaustive search reaching the zero it has to reach by definition,
-# which is the check that the measurement is sound.
+# The knee is the first three rows: two kernels for 6.81%, or about seven
+# for 5.16% with a worst case of 34.  Past that the tail runs away far
+# faster than the mean - ept moves the average to 34 but the worst cell
+# to 270, and tpb to 3,398.  The last row is the exhaustive search
+# reaching the zero it has to reach by definition, which is the check
+# that the measurement is sound.
+#
+# For a fixed budget rather than a length-dependent one, the three binary
+# rules together are 6.352% at 5.6 kernels on average and never more than
+# six, against the eight their arity allows, because the generator only
+# supports half_lds together with dtfr and two of the eight combinations
+# are illegal.  Most of that is half_lds on its own though: the other two
+# binary rules add four kernels to remove a further 0.46 points.
 #
 # LDS budget
 # ----------
