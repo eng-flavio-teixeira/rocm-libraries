@@ -386,14 +386,68 @@ lengths = {
         (2048, 2048, 2048),
     ],
 
-    # The lengths the Stockham SBRR kernel model was fitted and validated on:
-    # the 13 prime-power and 23 mixed-radix lengths of the tuning sweep, with
-    # 729 and 2048 appearing in both of those sets.
+    # The lengths the Stockham SBRR kernel model was fitted on: the 13
+    # prime-power and 23 mixed-radix lengths of the tuning sweep, with 729 and
+    # 2048 appearing in both of those sets.  These are also exactly the lengths
+    # config_sbrr.py carries a model-derived entry for, so this suite measures
+    # the entries and nothing else.  It is not the validation set; see
+    # 'model_sbrr_oos' below for that.
     'model_sbrr': [
         64, 81, 105, 108, 121, 125, 128, 150, 169, 243,
         256, 289, 392, 512, 625, 675, 729, 750, 972, 1000,
         1001, 1024, 1176, 1500, 1568, 1575, 2000, 2025, 2048, 2187,
         2250, 3000, 3125, 3888,
+    ],
+
+    # The lengths the model was validated on and never fitted to, so a result
+    # here says whether the rules generalise rather than whether they fitted.
+    # Disjoint from 'model_sbrr' by construction.  Every one of these was
+    # measured candidate-by-candidate in the tuning sweeps, so the regret of the
+    # model's pick at each is already known and a timing here can be compared
+    # against it.  Grouped by what each group was chosen to exercise.
+    'model_sbrr_oos': [
+        # Holdout, five groups.  A large odd radix cubed or to the fourth, where
+        # the factorization and its ordering are forced and only the three
+        # boolean flags are left to choose:
+        343, 1331, 2197, 2401, 6561,
+        # a large odd radix inside a mixture, which the fitted set reaches only
+        # as 121, 169, 289 and 1001:
+        143, 187, 325, 363, 507, 578, 605, 833, 867, 1156,
+        1183, 1375, 1734, 2023,
+        # four distinct primes, one further than the fitted set goes.  1155 is
+        # 3*5*7*11: one factorization, 24 orderings, so a pure test of how the
+        # radices should be sequenced:
+        910, 1122, 1155, 1190, 1365, 1430, 1530, 1950, 2002,
+        # past the fitted set's 3888.  A half_lds=0 kernel needs length*tpb*8
+        # bytes of LDS, so on the three boards with a 32 KiB budget the choice
+        # disappears beyond length 4096 even at one transform per block: 4704
+        # and up have no half_lds=0 candidate at all.  MI350X has 80 KiB and
+        # keeps the choice at all seven, at one or two transforms per block.
+        # That asymmetry is the one regime no rule fitted on the other 34 can
+        # reach, and it is the only place the suite is measuring different
+        # hardware rather than the same decision made differently:
+        4000, 4050, 4096, 4704, 5488, 6144, 8192,
+        # ordinary highly composite at sizes the fitted set does not cover,
+        # where the model has the most freedom and so the most room to be wrong:
+        110, 170, 294, 405, 500, 784, 1100, 1300, 1458, 1764,
+        2916,
+        # The deployed lengths above 3200 that no other set contains, for the
+        # workgroup-size rule the shorter lengths cannot separate:
+        3240, 3375, 3456, 3600, 3645, 3750, 3840,
+        # p^2*m for p in 11, 13, 17 -- the family that used to carry most of the
+        # holdout regret on MI325X and MI350X, and the one that settled the
+        # elements-per-thread rule on round-up rather than nearest.  A later
+        # change to that rule has to answer to these.  2420 and 2535 belong
+        # here too, but config_sbrr.py has no SBRR entry for either, so they
+        # would not exercise this kernel:
+        242, 338, 676, 1445, 1452, 1815, 2028,
+        # Lengths whose search space is almost entirely the transforms-per-block
+        # axis, which is the one rule the other sets leave underdetermined.
+        # 416, 495 and 616 are also three of the six lengths where some radix
+        # orderings miscompute; the shipped configs avoid those orderings, and
+        # the tuner rejects them, so these are safe to time:
+        51, 385, 416, 455, 476, 490, 495, 616, 663, 735,
+        819, 875, 935, 975, 980,
     ],
 
 }
@@ -898,6 +952,48 @@ model_footprint_exponents = list(range(22, 30))  # 4 MiB .. 512 MiB
 model_bytes_per_element = 8
 
 
+def _model_sbrr_problems(key, tag):
+    """One problem per length per footprint rung per direction.
+
+    Shared by the fitted and out-of-sample suites so the two cannot drift: a
+    comparison between them is only worth making if the batch sizes and the
+    ladder are derived identically.
+    """
+    for direction, exp in product(all_directions, model_footprint_exponents):
+        for length in lengths[key]:
+            nbatch = (1 << exp) // (2 * length * model_bytes_per_element)
+            if nbatch < 1:
+                continue
+            yield Problem([length],
+                          tag=mktag(tag + "_fp2e" + str(exp), 1, 'single',
+                                    direction, False, False),
+                          nbatch=nbatch,
+                          direction=direction,
+                          inplace=False,
+                          real=False,
+                          precision='single')
+
+
+def model_sbrr_oos():
+    """Lengths the Stockham SBRR kernel model was validated on, never fitted to.
+
+    Same precision, placement, directions and footprint ladder as 'model_sbrr',
+    which is the point: the only difference between the two suites is whether
+    the length was used to derive the rules, so running both and comparing says
+    how much of the model's measured quality is fit and how much is
+    generalisation.  75 lengths, so 1,200 problems against that suite's 544.
+
+    None of these 75 has a model-derived entry in config_sbrr.py today -- all of
+    them fall through to a generic one -- so a run now is the baseline to emit
+    against rather than a measurement of the model.  Running it before and after
+    emitting is what turns the sweep's predicted regret into a measured number.
+
+    See model_sbrr for why double precision, real transforms and in-place are
+    all deliberately absent.
+    """
+    yield from _model_sbrr_problems('model_sbrr_oos', 'model_sbrr_oos')
+
+
 def model_sbrr():
     """Lengths addressed by the fitted Stockham SBRR kernel model.
 
@@ -920,20 +1016,12 @@ def model_sbrr():
 
     The ladder stops short of the smallest footprints on purpose; see the table
     above model_footprint_exponents for what the harness can resolve there.
+
+    These 34 lengths are the ones the rules were derived from, so a good result
+    here is partly a fit.  Run 'model_sbrr_oos' alongside it for the 75 lengths
+    that were held out.
     """
-    for direction, exp in product(all_directions, model_footprint_exponents):
-        for length in lengths['model_sbrr']:
-            nbatch = (1 << exp) // (2 * length * model_bytes_per_element)
-            if nbatch < 1:
-                continue
-            yield Problem([length],
-                          tag=mktag("model_sbrr_fp2e" + str(exp), 1, 'single',
-                                    direction, False, False),
-                          nbatch=nbatch,
-                          direction=direction,
-                          inplace=False,
-                          real=False,
-                          precision='single')
+    yield from _model_sbrr_problems('model_sbrr', 'model_sbrr')
 
 
 def benchmarks():

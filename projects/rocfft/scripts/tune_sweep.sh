@@ -109,10 +109,13 @@
 #       5488, 6144, 8192, against a previous maximum of 3888.  These
 #       are not just bigger: half_lds=0 needs length*tpb*8 bytes of LDS
 #       against a 32 KiB budget, so beyond length 4096 it does not fit
-#       even at transforms_per_block 1 and the choice disappears.  Five
-#       of these seven have no half_lds=0 candidate at all, which is
-#       the one regime where a rule fitted on the other 34 cannot
-#       apply.
+#       even at transforms_per_block 1 and the choice disappears.  This
+#       was written expecting five of the seven to have no half_lds=0
+#       candidate at all; the sweep says four - 4704 and up - and only
+#       on the three boards with a 32 KiB budget.  MI350X has 80 KiB
+#       and keeps the choice at every one of the seven.  So the regime
+#       a rule fitted on the other 34 cannot reach is real, but it is
+#       four lengths on three boards rather than five everywhere.
 #   11  ordinary highly composite lengths at new sizes - 110, 170, 294,
 #       405, 500, 784, 1100, 1300, 1458, 1764, 2916.  These are the
 #       closest in character to the existing mixed set and carry most
