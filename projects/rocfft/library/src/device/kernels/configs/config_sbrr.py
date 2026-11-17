@@ -28,6 +28,11 @@ from types import SimpleNamespace as NS
 
 _MODEL_ARCHS = [supported_arch.GFX_1030.value, supported_arch.GFX_90A.value, supported_arch.GFX_942.value, supported_arch.GFX_950.value, supported_arch.GFX_1201.value]
 
+_MODEL_ARCHS_LDS32 = [supported_arch.GFX_1030.value, supported_arch.GFX_1201.value, supported_arch.GFX_90A.value, supported_arch.GFX_942.value]
+_MODEL_ARCHS_LDS80 = [supported_arch.GFX_950.value]
+_MODEL_ARCHS_WAVE32 = [supported_arch.GFX_1030.value, supported_arch.GFX_1201.value]
+_MODEL_ARCHS_WAVE64 = [supported_arch.GFX_90A.value, supported_arch.GFX_942.value, supported_arch.GFX_950.value]
+
 # yapf: disable
 sbrr_kernels = [
     NS(length=   1, workgroup_size= 64, threads_per_transform=  1, factors=(1,), runtime_compile=True),
@@ -565,4 +570,111 @@ sbrr_kernels = [
     NS(length= 3000, workgroup_size= 500, threads_per_transform= 500, factors=(10, 10, 6, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
     NS(length= 3125, workgroup_size= 125, threads_per_transform= 125, factors=(5, 5, 5, 5, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
     NS(length= 3888, workgroup_size= 486, threads_per_transform= 486, factors=(9, 9, 8, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+
+    # model-predicted configs, out-of-sample lengths (k=1, no benchmarking)
+    # The 75 lengths the model was validated on rather than fitted to,
+    # predicted by the same seven rules and tie-break as the block above
+    # and with no benchmarking.  See that block for what the rules are.
+    # Every config here compiled and ran during the tuning sweep, so each
+    # has a measured time; against develop's generic entry the sweep puts
+    # these a mean 6.9% and median 5.7% faster over the 660 cells where
+    # both were timed, faster in 527 of them and slower in 96.
+    # Six lengths are net slower than the generic entry and are emitted
+    # anyway so the perf run measures them: 4704 (-12.4% mean), 416
+    # (-3.3%), 4096 (-2.8%), 3456 (-1.4%), 605 (-1.4%), 495 (-0.4%).
+    # Seven lengths take two lines over disjoint architecture lists,
+    # because the candidate set differs rather than the model: past
+    # length 4096 a half_lds=0 kernel needs more than a 32 KiB budget, so
+    # 4704, 5488, 6144, 6561 and 8192 can only drop half_lds on gfx950,
+    # and at 51 and 867 RDNA's wave-32 workgroup floor reaches workgroups
+    # CDNA cannot express.  Every other length is one line for all five.
+    # Two boards did not supply every pick and inherit the rest, which
+    # the model permits because its tpb budget is an absolute 8192 bytes
+    # rather than a share of the LDS, so it reads nothing off the device:
+    # gfx1030 was never swept and takes all 75 from gfx1201, whose wave
+    # size and LDS budget it shares, and gfx950 was not swept on the seven
+    # deployed lengths above 3200 and takes those from gfx942.  Both were
+    # checked against the inheriting board's own workgroup and LDS limits.
+    NS(length=   51, workgroup_size=  60, threads_per_transform=   3, factors=(17, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_WAVE32, runtime_compile=True),
+    NS(length=   51, workgroup_size= 340, threads_per_transform=  17, factors=(17, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_WAVE64, runtime_compile=True),
+    NS(length=  110, workgroup_size=  99, threads_per_transform=  11, factors=(11, 10), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  143, workgroup_size=  91, threads_per_transform=  13, factors=(13, 11), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  170, workgroup_size= 102, threads_per_transform=  17, factors=(17, 10), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  187, workgroup_size=  85, threads_per_transform=  17, factors=(17, 11), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  242, workgroup_size=  88, threads_per_transform=  22, factors=(11, 11, 2), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  294, workgroup_size= 147, threads_per_transform=  49, factors=(7, 7, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  325, workgroup_size= 195, threads_per_transform=  65, factors=(13, 5, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  338, workgroup_size=  78, threads_per_transform=  26, factors=(13, 13, 2), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  343, workgroup_size= 147, threads_per_transform=  49, factors=(7, 7, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  363, workgroup_size=  99, threads_per_transform=  33, factors=(11, 11, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  385, workgroup_size= 231, threads_per_transform=  77, factors=(11, 7, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  405, workgroup_size= 243, threads_per_transform=  81, factors=(9, 9, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  416, workgroup_size= 208, threads_per_transform= 104, factors=(13, 8, 4), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  455, workgroup_size= 182, threads_per_transform=  91, factors=(13, 7, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  476, workgroup_size= 238, threads_per_transform= 119, factors=(17, 7, 4), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  490, workgroup_size= 140, threads_per_transform=  70, factors=(10, 7, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  495, workgroup_size= 198, threads_per_transform=  99, factors=(11, 9, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  500, workgroup_size= 200, threads_per_transform= 100, factors=(10, 10, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  507, workgroup_size=  78, threads_per_transform=  39, factors=(13, 13, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  578, workgroup_size=  68, threads_per_transform=  34, factors=(17, 17, 2), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  605, workgroup_size= 242, threads_per_transform= 121, factors=(11, 11, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  616, workgroup_size= 176, threads_per_transform=  88, factors=(11, 8, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  663, workgroup_size= 102, threads_per_transform=  51, factors=(17, 13, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  676, workgroup_size= 104, threads_per_transform=  52, factors=(13, 13, 4), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  735, workgroup_size= 245, threads_per_transform= 245, factors=(7, 7, 5, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  784, workgroup_size= 112, threads_per_transform= 112, factors=(16, 7, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  819, workgroup_size= 117, threads_per_transform= 117, factors=(13, 9, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  833, workgroup_size= 119, threads_per_transform= 119, factors=(17, 7, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  867, workgroup_size=  51, threads_per_transform=  51, factors=(17, 17, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_WAVE32, runtime_compile=True),
+    NS(length=  867, workgroup_size= 289, threads_per_transform= 289, factors=(17, 17, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_WAVE64, runtime_compile=True),
+    NS(length=  875, workgroup_size= 175, threads_per_transform= 175, factors=(7, 5, 5, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  910, workgroup_size= 130, threads_per_transform= 130, factors=(13, 10, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  935, workgroup_size= 187, threads_per_transform= 187, factors=(17, 11, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  975, workgroup_size= 195, threads_per_transform= 195, factors=(13, 5, 5, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length=  980, workgroup_size= 245, threads_per_transform= 245, factors=(7, 7, 5, 4), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1100, workgroup_size= 110, threads_per_transform= 110, factors=(11, 10, 10), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1122, workgroup_size= 187, threads_per_transform= 187, factors=(17, 11, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1155, workgroup_size= 231, threads_per_transform= 231, factors=(11, 7, 5, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1156, workgroup_size=  68, threads_per_transform=  68, factors=(17, 17, 4), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1183, workgroup_size= 169, threads_per_transform= 169, factors=(13, 13, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1190, workgroup_size= 170, threads_per_transform= 170, factors=(17, 10, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1300, workgroup_size= 130, threads_per_transform= 130, factors=(13, 10, 10), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1331, workgroup_size= 121, threads_per_transform= 121, factors=(11, 11, 11), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1365, workgroup_size= 195, threads_per_transform= 195, factors=(13, 7, 5, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1375, workgroup_size= 125, threads_per_transform= 125, factors=(11, 5, 5, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1430, workgroup_size= 143, threads_per_transform= 143, factors=(13, 11, 10), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1445, workgroup_size=  85, threads_per_transform=  85, factors=(17, 17, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1452, workgroup_size= 132, threads_per_transform= 132, factors=(11, 11, 4, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1458, workgroup_size= 243, threads_per_transform= 243, factors=(9, 6, 3, 3, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1530, workgroup_size= 170, threads_per_transform= 170, factors=(17, 10, 9), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1734, workgroup_size= 289, threads_per_transform= 289, factors=(17, 17, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1764, workgroup_size= 294, threads_per_transform= 294, factors=(7, 7, 6, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1815, workgroup_size= 165, threads_per_transform= 165, factors=(11, 11, 5, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 1950, workgroup_size= 325, threads_per_transform= 325, factors=(13, 6, 5, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 2002, workgroup_size= 286, threads_per_transform= 286, factors=(13, 11, 7, 2), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 2023, workgroup_size= 289, threads_per_transform= 289, factors=(17, 17, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 2028, workgroup_size= 169, threads_per_transform= 169, factors=(13, 13, 4, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 2197, workgroup_size= 169, threads_per_transform= 169, factors=(13, 13, 13), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 2401, workgroup_size= 343, threads_per_transform= 343, factors=(7, 7, 7, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 2916, workgroup_size= 486, threads_per_transform= 486, factors=(9, 9, 6, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 3240, workgroup_size= 360, threads_per_transform= 360, factors=(10, 9, 6, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 3375, workgroup_size= 375, threads_per_transform= 375, factors=(9, 5, 5, 5, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 3456, workgroup_size= 216, threads_per_transform= 216, factors=(16, 6, 6, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 3600, workgroup_size= 360, threads_per_transform= 360, factors=(10, 10, 6, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 3645, workgroup_size= 405, threads_per_transform= 405, factors=(9, 9, 9, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 3750, workgroup_size= 150, threads_per_transform= 150, factors=(6, 5, 5, 5, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 3840, workgroup_size= 480, threads_per_transform= 480, factors=(10, 8, 8, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 4000, workgroup_size= 400, threads_per_transform= 400, factors=(16, 10, 5, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 4050, workgroup_size= 450, threads_per_transform= 450, factors=(10, 9, 9, 5), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 4096, workgroup_size= 256, threads_per_transform= 256, factors=(16, 16, 16), half_lds=False, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS, runtime_compile=True),
+    NS(length= 4704, workgroup_size= 294, threads_per_transform= 294, factors=(16, 7, 7, 6), half_lds=True, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS32, runtime_compile=True),
+    NS(length= 4704, workgroup_size= 294, threads_per_transform= 294, factors=(16, 7, 7, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS80, runtime_compile=True),
+    NS(length= 5488, workgroup_size= 343, threads_per_transform= 343, factors=(16, 7, 7, 7), half_lds=True, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS32, runtime_compile=True),
+    NS(length= 5488, workgroup_size= 343, threads_per_transform= 343, factors=(16, 7, 7, 7), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS80, runtime_compile=True),
+    NS(length= 6144, workgroup_size= 384, threads_per_transform= 384, factors=(16, 8, 8, 6), half_lds=True, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS32, runtime_compile=True),
+    NS(length= 6144, workgroup_size= 384, threads_per_transform= 384, factors=(16, 8, 8, 6), half_lds=False, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS80, runtime_compile=True),
+    NS(length= 6561, workgroup_size= 243, threads_per_transform= 243, factors=(9, 9, 9, 3, 3), half_lds=True, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS32, runtime_compile=True),
+    NS(length= 6561, workgroup_size= 243, threads_per_transform= 243, factors=(9, 9, 9, 3, 3), half_lds=False, direct_to_from_reg=True, inplace_radix=True, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS80, runtime_compile=True),
+    NS(length= 8192, workgroup_size= 512, threads_per_transform= 512, factors=(16, 8, 8, 8), half_lds=True, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS32, runtime_compile=True),
+    NS(length= 8192, workgroup_size= 512, threads_per_transform= 512, factors=(16, 8, 8, 8), half_lds=False, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS80, runtime_compile=True),
 ]
