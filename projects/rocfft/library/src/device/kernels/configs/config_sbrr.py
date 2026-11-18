@@ -692,14 +692,24 @@ sbrr_kernels = [
     # NS(length= 8192, workgroup_size= 512, threads_per_transform= 512, factors=(16, 8, 8, 8), half_lds=True, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS32, runtime_compile=True),
     # NS(length= 8192, workgroup_size= 512, threads_per_transform= 512, factors=(16, 8, 8, 8), half_lds=False, direct_to_from_reg=True, inplace_radix=False, precision=['sp'], gcn_arch_name=_MODEL_ARCHS_LDS80, runtime_compile=True),
 
-    # benchmark-selected configs (five rules at k=1, half_lds and multiset timed)
+    # benchmark-selected configs (five rules applied, half_lds and multiset timed)
     # NOT the model's prediction.  Five of the seven rules are applied
-    # at k=1 -- dtfr=1, inplace=1, wgs~256 with ept rounded up, the
-    # descending ordering, tpb = min(8192 B, wgs <= 1024) -- and the
-    # other two, half_lds and the choice of radix multiset, are left to
-    # a benchmark.  These entries are what that benchmark settles on, so
-    # that the hybrid plan can be measured before the library can do the
-    # benchmarking itself.  j106 scored half_lds and multiset as the two
+    # and settle their parameter outright -- dtfr=1, inplace=1, wgs~256
+    # with ept rounded up, the descending ordering, and tpb = min(8192 B,
+    # wgs <= 1024) -- while the other two, half_lds and the choice of
+    # radix multiset, are dropped from the chain, so every value of them
+    # survives for a benchmark to time.  These entries are what such a
+    # benchmark settles on, so that the hybrid plan can be measured
+    # before the library is able to do the benchmarking itself.
+    # On the k in the analysis scripts, since this block is not 'k=3':
+    # k is per rule and is how many values of that rule survive its own
+    # narrowing step, not how many rules are applied.  The model is every
+    # rule at k=1, which is why it names exactly one kernel.  Raising k
+    # to 3 here would change nothing -- half_lds is binary, so there is
+    # no third value to ask for, and the multiset narrowing takes no k
+    # argument at all -- which is why leaving these two to a benchmark
+    # means dropping their rules rather than widening a k.
+    # j106 scored half_lds and multiset as the two
     # cheapest rules to leave open; the shortlist a plan would compile
     # and time averages 6.7 kernels and reaches 34 at worst.
     # Over the 1,119 cells of the tuning sweep the seven rules alone
